@@ -3,7 +3,6 @@ dotenv.config();
 
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { generateAuditWithAi } from './server/aiService.js';
 import { crawlWebsite } from './server/crawler.js';
 import { runDeterministicChecks } from './server/deterministicChecks.js';
@@ -108,6 +107,7 @@ async function startServer() {
 
   // Setup Vite / Static handling
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
