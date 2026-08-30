@@ -1502,7 +1502,7 @@ async function startServer() {
       res.sendFile(import_path2.default.join(distPath, "index.html"));
     });
   }
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, () => {
     console.log(`AI Website Auditor Server running on http://0.0.0.0:${PORT}`);
   });
 }

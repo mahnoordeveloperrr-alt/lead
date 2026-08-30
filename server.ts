@@ -121,7 +121,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, () => {
     console.log(`AI Website Auditor Server running on http://0.0.0.0:${PORT}`);
   });
 }
