@@ -230069,6 +230069,7 @@ import_dotenv.default.config();
 async function startServer2() {
   const app = (0, import_express.default)();
   const PORT = process.env.PORT || 3e3;
+  const HOST = process.env.HOST || "::";
   app.use(import_express.default.json({ limit: "2mb" }));
   app.get("/api/health", (req2, res) => {
     res.json({
@@ -230153,8 +230154,8 @@ async function startServer2() {
       res.sendFile(import_path10.default.join(distPath, "index.html"));
     });
   }
-  app.listen(PORT, () => {
-    console.log(`AI Website Auditor Server running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`AI Website Auditor Server running on http://${HOST}:${PORT}`);
   });
 }
 startServer2().catch((err2) => {

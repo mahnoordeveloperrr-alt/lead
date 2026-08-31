@@ -14,6 +14,7 @@ import fs from 'fs';
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
+  const HOST = process.env.HOST || '::';
 
   // Middleware
   app.use(express.json({ limit: '2mb' }));
@@ -121,8 +122,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, () => {
-    console.log(`AI Website Auditor Server running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`AI Website Auditor Server running on http://${HOST}:${PORT}`);
   });
 }
 
