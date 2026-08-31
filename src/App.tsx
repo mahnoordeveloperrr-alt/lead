@@ -171,7 +171,7 @@ export function App() {
             />
 
             {/* Section G: Methodology & Scope Notice */}
-            <AnalysisLimitations />
+            <AnalysisLimitations limitations={auditResult.limitations} />
           </div>
         )}
       </main>

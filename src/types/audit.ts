@@ -1,6 +1,8 @@
 export type IssueSeverity = 'high' | 'medium' | 'low';
 export type FindingCategory = 'ux' | 'seo' | 'performance' | 'accessibility' | 'conversion';
-export type FindingStatus = 'good' | 'warning' | 'issue' | 'unverified';
+export type FindingStatus = 'pass' | 'warning' | 'critical' | 'unverified';
+export type FindingSource = 'crawled' | 'ai-analysis' | 'unverified';
+export type ScoreGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'C-' | 'D' | 'F';
 
 export interface HeadingItem {
   tag: 'h1' | 'h2' | 'h3';
@@ -36,7 +38,7 @@ export interface ExtractedWebsiteData {
   viewport: string;
   hasViewportMeta: boolean;
   isHttps: boolean;
-  
+
   // Headings
   headings: {
     h1: string[];
@@ -55,6 +57,7 @@ export interface ExtractedWebsiteData {
     internalCount: number;
     externalCount: number;
     emptyTextCount: number;
+    emptyButtonCount: number;
     ctaLinks: string[];
     sampleLinks: LinkAuditItem[];
   };
@@ -108,7 +111,13 @@ export interface ExtractedWebsiteData {
     count: number;
     hasInputsWithoutLabels: boolean;
     sampleFormActions: string[];
+    totalInputs: number;
+    inputsWithoutLabels: number;
   };
+
+  // Robots
+  robotsMeta: string;
+  hasRobotsMeta: boolean;
 
   // Content Preview
   bodySnippet: string;
@@ -120,8 +129,11 @@ export interface DeterministicCheck {
   title: string;
   status: FindingStatus;
   message: string;
+  evidence: string;
+  source: FindingSource;
   metric?: string;
   importance: 'critical' | 'recommended' | 'optional';
+  weight: number; // 0-10 scoring weight
 }
 
 export interface AuditScores {
@@ -131,6 +143,17 @@ export interface AuditScores {
   accessibility: number;
   conversion: number;
   overall: number;
+  grade: ScoreGrade;
+}
+
+export interface ScoreBreakdown {
+  category: FindingCategory;
+  rawScore: number;
+  maxPossible: number;
+  grade: ScoreGrade;
+  verifiedChecks: number;
+  failedChecks: number;
+  unverifiedChecks: number;
 }
 
 export interface HighPriorityIssue {
@@ -142,6 +165,7 @@ export interface HighPriorityIssue {
   evidence: string;
   impact: string;
   recommendation: string;
+  source: FindingSource;
 }
 
 export interface CategoryFinding {
@@ -150,7 +174,8 @@ export interface CategoryFinding {
   title: string;
   status: FindingStatus;
   description: string;
-  evidence?: string;
+  evidence: string;
+  source: FindingSource;
   recommendation?: string;
 }
 
@@ -159,13 +184,16 @@ export interface StrengthItem {
   category: FindingCategory;
   description: string;
   evidence: string;
+  source: FindingSource;
 }
 
 export interface RedesignOpportunity {
   area: string;
-  currentObservation: string;
-  recommendedRedesign: string;
-  expectedImpact: 'High Impact' | 'Medium Impact' | 'Visual Polish';
+  problem: string;
+  evidence: string;
+  impact: string;
+  redesignStrategy: string;
+  priority: 'High' | 'Medium' | 'Low';
 }
 
 export interface AuditResult {
@@ -178,6 +206,7 @@ export interface AuditResult {
     scannedAt: string;
   };
   scores: AuditScores;
+  scoreBreakdown: ScoreBreakdown[];
   summary: string;
   highPriorityIssues: HighPriorityIssue[];
   categoryFindings: {

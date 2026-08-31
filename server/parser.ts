@@ -20,6 +20,14 @@ const CTA_KEYWORDS = [
   'learn more',
   'get in touch',
   'start now',
+  'hire us',
+  'let\'s talk',
+  'request a quote',
+  'get a quote',
+  'book now',
+  'enroll now',
+  'download',
+  'apply now',
 ];
 
 export function parseHtml(crawlData: CrawlResult, initialUrl: string): ExtractedWebsiteData {
@@ -40,6 +48,10 @@ export function parseHtml(crawlData: CrawlResult, initialUrl: string): Extracted
   const viewport = ($('meta[name="viewport"]').attr('content') || '').trim();
   const hasViewportMeta = viewport.length > 0;
   const isHttps = finalUrl.startsWith('https://');
+
+  // Robots meta
+  const robotsMeta = ($('meta[name="robots"]').attr('content') || '').trim();
+  const hasRobotsMeta = robotsMeta.length > 0;
 
   // Headings
   const h1List: string[] = [];
@@ -83,6 +95,7 @@ export function parseHtml(crawlData: CrawlResult, initialUrl: string): Extracted
   let internalCount = 0;
   let externalCount = 0;
   let emptyTextCount = 0;
+  let emptyButtonCount = 0;
   const ctaLinks: string[] = [];
   const sampleLinks: LinkAuditItem[] = [];
 
@@ -92,7 +105,7 @@ export function parseHtml(crawlData: CrawlResult, initialUrl: string): Extracted
     const ariaLabel = ($(el).attr('aria-label') || '').trim();
     const visibleOrAccessibleText = text || ariaLabel;
 
-    if (!visibleOrAccessibleText && href) {
+    if (!visibleOrAccessibleText && href && !href.startsWith('#')) {
       emptyTextCount++;
     }
 
@@ -128,6 +141,16 @@ export function parseHtml(crawlData: CrawlResult, initialUrl: string): Extracted
         isCtaLike: isCta,
         hasText: !!visibleOrAccessibleText,
       });
+    }
+  });
+
+  // Count empty buttons
+  $('button').each((_, el) => {
+    const text = $(el).text().replace(/\s+/g, ' ').trim();
+    const ariaLabel = ($(el).attr('aria-label') || '').trim();
+    const title = ($(el).attr('title') || '').trim();
+    if (!text && !ariaLabel && !title) {
+      emptyButtonCount++;
     }
   });
 
@@ -199,25 +222,26 @@ export function parseHtml(crawlData: CrawlResult, initialUrl: string): Extracted
   const inlineStyleCount = $('style, [style]').length;
 
   // Forms
-  let inputsWithoutLabels = false;
+  let inputsWithoutLabelsCount = 0;
+  let totalInputCount = 0;
   const sampleFormActions: string[] = [];
   $('form').each((_, formEl) => {
     const action = $(formEl).attr('action') || '[inline / js handled]';
     sampleFormActions.push(action);
     const inputs = $(formEl).find('input:not([type="hidden"]):not([type="submit"]):not([type="button"])');
     inputs.each((_, inputEl) => {
+      totalInputCount++;
       const id = $(inputEl).attr('id');
       const ariaLabel = $(inputEl).attr('aria-label');
       const placeholder = $(inputEl).attr('placeholder');
       const hasLabel = id ? $(`label[for="${id}"]`).length > 0 : false;
       if (!hasLabel && !ariaLabel && !placeholder) {
-        inputsWithoutLabels = true;
+        inputsWithoutLabelsCount++;
       }
     });
   });
 
   // Clean visible text preview
-  // Remove non-visible tags
   $('script, style, noscript, svg, template, iframe').remove();
   const bodyText = $('body')
     .text()
@@ -256,6 +280,7 @@ export function parseHtml(crawlData: CrawlResult, initialUrl: string): Extracted
       internalCount,
       externalCount,
       emptyTextCount,
+      emptyButtonCount,
       ctaLinks,
       sampleLinks,
     },
@@ -297,9 +322,13 @@ export function parseHtml(crawlData: CrawlResult, initialUrl: string): Extracted
     },
     forms: {
       count: $('form').length,
-      hasInputsWithoutLabels: inputsWithoutLabels,
+      hasInputsWithoutLabels: inputsWithoutLabelsCount > 0,
       sampleFormActions,
+      totalInputs: totalInputCount,
+      inputsWithoutLabels: inputsWithoutLabelsCount,
     },
+    robotsMeta,
+    hasRobotsMeta,
     bodySnippet,
   };
 }

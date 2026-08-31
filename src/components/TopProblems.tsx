@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { HighPriorityIssue } from '../types/audit.js';
 
 interface TopProblemsProps {
@@ -47,7 +47,6 @@ export const TopProblems: React.FC<TopProblemsProps> = ({ issues }) => {
               key={issue.id || idx}
               className="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-3 hover:border-zinc-700 transition-all"
             >
-              {/* Header tags */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span
@@ -55,20 +54,31 @@ export const TopProblems: React.FC<TopProblemsProps> = ({ issues }) => {
                       isHigh
                         ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                         : isMedium
-                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                        : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                          ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                          : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
                     }`}
                   >
-                    {isHigh ? 'Critical' : isMedium ? 'Warning' : 'Minor'}
+                    {isHigh ? 'HIGH' : isMedium ? 'MEDIUM' : 'LOW'}
                   </span>
                   <span className="text-[9px] uppercase tracking-widest text-zinc-500 font-bold">
                     {issue.category}
                   </span>
                 </div>
-                <span className="text-[10px] font-mono text-zinc-600">#{idx + 1}</span>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded border ${
+                      issue.source === 'crawled'
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                    }`}
+                  >
+                    {issue.source === 'crawled' ? '🔍 CRAWLED' : '✨ AI ANALYSIS'}
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-600">#{idx + 1}</span>
+                </div>
               </div>
 
-              {/* Title & Problem */}
               <div>
                 <h4 className="text-sm font-semibold text-zinc-200 mb-1.5">
                   {issue.title}
@@ -79,12 +89,11 @@ export const TopProblems: React.FC<TopProblemsProps> = ({ issues }) => {
                 </p>
               </div>
 
-              {/* Evidence Quote */}
               {issue.evidence && (
                 <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
                     <AlertCircle className="w-3 h-3 text-orange-400" />
-                    <span>Evidence from Crawled HTML:</span>
+                    <span>Evidence:</span>
                   </div>
                   <p className="text-xs font-mono text-zinc-400 break-words leading-relaxed">
                     {issue.evidence}
@@ -92,11 +101,10 @@ export const TopProblems: React.FC<TopProblemsProps> = ({ issues }) => {
                 </div>
               )}
 
-              {/* Impact & Recommendation Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                 <div className="p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/80">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/90 block mb-1">
-                    Why it matters (Impact)
+                    Impact
                   </span>
                   <p className="text-xs text-zinc-400 leading-relaxed font-light">
                     {issue.impact}
@@ -105,7 +113,7 @@ export const TopProblems: React.FC<TopProblemsProps> = ({ issues }) => {
 
                 <div className="p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/80">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90 block mb-1">
-                    Recommended Fix
+                    Recommendation
                   </span>
                   <p className="text-xs text-zinc-400 leading-relaxed font-light">
                     {issue.recommendation}

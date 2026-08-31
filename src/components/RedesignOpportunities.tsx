@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Lightbulb, Compass, ArrowRight } from 'lucide-react';
+import { Sparkles, Lightbulb, Target, AlertTriangle } from 'lucide-react';
 import type { RedesignOpportunity } from '../types/audit.js';
 
 interface RedesignOpportunitiesProps {
@@ -15,10 +15,8 @@ export const RedesignOpportunities: React.FC<RedesignOpportunitiesProps> = ({
 
   return (
     <div className="bg-[#0A0A0A] border border-zinc-800 text-zinc-100 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden space-y-6">
-      {/* Subtle Background Glow */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Header */}
       <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-zinc-800/60">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-400 mb-3">
@@ -29,7 +27,8 @@ export const RedesignOpportunities: React.FC<RedesignOpportunitiesProps> = ({
             Strategic Redesign Proposals
           </h3>
           <p className="text-xs text-zinc-400 max-w-2xl mt-1 font-light">
-            Architectural and UX modernizations to maximize visitor trust, engagement, and conversion for <span className="font-semibold text-zinc-200">{domain}</span>.
+            Architectural and UX modernizations for <span className="font-semibold text-zinc-200">{domain}</span>.
+            Each recommendation includes problem identification, evidence, and prioritized redesign strategy.
           </p>
         </div>
 
@@ -39,51 +38,78 @@ export const RedesignOpportunities: React.FC<RedesignOpportunitiesProps> = ({
         </div>
       </div>
 
-      {/* Opportunities Grid */}
-      <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+      <div className="relative z-10 space-y-4 pt-2">
         {opportunities.map((opp, idx) => {
-          const isHigh = opp.expectedImpact === 'High Impact';
+          const priorityColor =
+            opp.priority === 'High'
+              ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+              : opp.priority === 'Medium'
+                ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                : 'bg-zinc-900 text-zinc-400 border-zinc-800';
 
           return (
             <div
               key={idx}
-              className="p-5 rounded-xl bg-zinc-900/40 hover:bg-zinc-900/70 border border-zinc-800 hover:border-zinc-700 transition-all flex flex-col justify-between group space-y-4"
+              className="p-5 rounded-xl bg-zinc-900/40 hover:bg-zinc-900/70 border border-zinc-800 hover:border-zinc-700 transition-all space-y-4"
             >
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded ${
-                      isHigh
-                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                        : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
-                    }`}
-                  >
-                    {opp.expectedImpact}
-                  </span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
                   <span className="text-[10px] font-mono text-zinc-600">0{idx + 1}</span>
+                  <h4 className="text-sm font-semibold text-zinc-200">
+                    {opp.area}
+                  </h4>
                 </div>
-
-                <h4 className="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">
-                  {opp.area}
-                </h4>
-
-                <div className="space-y-1">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 block">
-                    Current Observation:
-                  </span>
-                  <p className="text-xs text-zinc-400 leading-relaxed font-light">
-                    {opp.currentObservation}
-                  </p>
-                </div>
+                <span
+                  className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border ${priorityColor}`}
+                >
+                  {opp.priority} Priority
+                </span>
               </div>
 
-              <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800/80 mt-2 space-y-1">
+              {/* Problem */}
+              <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-400/90 mb-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>Problem</span>
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed font-light">
+                  {opp.problem}
+                </p>
+              </div>
+
+              {/* Evidence */}
+              {opp.evidence && (
+                <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                    <Target className="w-3 h-3" />
+                    <span>Evidence</span>
+                  </div>
+                  <p className="text-xs font-mono text-zinc-400 break-words leading-relaxed">
+                    {opp.evidence}
+                  </p>
+                </div>
+              )}
+
+              {/* Impact */}
+              {opp.impact && (
+                <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400/80 block mb-1">
+                    Impact
+                  </span>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-light">
+                    {opp.impact}
+                  </p>
+                </div>
+              )}
+
+              {/* Redesign Strategy */}
+              <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800/80">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-orange-400">
                   <Lightbulb className="w-3.5 h-3.5" />
-                  <span>Redesign Strategy:</span>
+                  <span>Redesign Strategy</span>
                 </div>
-                <p className="text-xs text-zinc-300 leading-relaxed font-light">
-                  {opp.recommendedRedesign}
+                <p className="text-xs text-zinc-300 leading-relaxed font-light mt-1">
+                  {opp.redesignStrategy}
                 </p>
               </div>
             </div>
@@ -91,7 +117,6 @@ export const RedesignOpportunities: React.FC<RedesignOpportunitiesProps> = ({
         })}
       </div>
 
-      {/* Agency Callout Banner */}
       <div className="relative z-10 pt-4 border-t border-zinc-800/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500 font-mono">
         <span>
           💡 Use these recommendations in website proposal pitch decks, design sprints, or client discovery meetings.

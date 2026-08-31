@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ShieldCheck,
   ExternalLink,
@@ -11,8 +11,11 @@ import {
   TrendingUp,
   Code2,
   Check,
+  ChevronDown,
+  ChevronUp,
+  Info,
 } from 'lucide-react';
-import type { AuditResult, FindingCategory } from '../types/audit.js';
+import type { AuditResult, FindingCategory, ScoreBreakdown, ScoreGrade } from '../types/audit.js';
 
 interface ScoreOverviewProps {
   auditResult: AuditResult;
@@ -22,41 +25,41 @@ interface ScoreOverviewProps {
   onOpenShareModal: () => void;
 }
 
-function getScoreBadge(score: number): {
+function getScoreBadge(score: number, grade?: ScoreGrade): {
   textColor: string;
   barColor: string;
   badgeClass: string;
-  grade: string;
+  gradeLabel: string;
 } {
-  if (score >= 85) {
+  if (score >= 90) {
     return {
       textColor: 'text-emerald-400',
       barColor: 'bg-emerald-500',
       badgeClass: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-      grade: 'Grade A • Optimal',
+      gradeLabel: grade || 'A',
     };
   }
-  if (score >= 70) {
+  if (score >= 80) {
     return {
       textColor: 'text-zinc-200',
       barColor: 'bg-zinc-300',
       badgeClass: 'bg-zinc-800 text-zinc-300 border border-zinc-700',
-      grade: 'Grade B • Good / Solid',
+      gradeLabel: grade || 'B',
     };
   }
-  if (score >= 50) {
+  if (score >= 65) {
     return {
       textColor: 'text-orange-400',
       barColor: 'bg-orange-500',
       badgeClass: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
-      grade: 'Grade C • Needs Optimization',
+      gradeLabel: grade || 'C',
     };
   }
   return {
     textColor: 'text-red-400',
     barColor: 'bg-red-500',
     badgeClass: 'bg-red-500/20 text-red-400 border border-red-500/30',
-    grade: 'Grade D • Critical Issues',
+    gradeLabel: grade || 'D',
   };
 }
 
@@ -67,13 +70,14 @@ export const ScoreOverview: React.FC<ScoreOverviewProps> = ({
   onOpenInspector,
   onOpenShareModal,
 }) => {
-  const { website, scores, summary, extractedData } = auditResult;
-  const overallBadge = getScoreBadge(scores.overall);
+  const { website, scores, summary, extractedData, scoreBreakdown } = auditResult;
+  const overallBadge = getScoreBadge(scores.overall, scores.grade);
   const [copied, setCopied] = React.useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   const handleQuickCopy = () => {
     const text = `AI Website Audit for ${website.domain}
-Overall Score: ${scores.overall}/100 (${overallBadge.grade})
+Overall Score: ${scores.overall}/100 (Grade ${scores.grade})
 • UX/UI: ${scores.ux}/100
 • SEO: ${scores.seo}/100
 • Performance: ${scores.performance}/100
@@ -124,6 +128,10 @@ Summary: ${summary}`;
     },
   ];
 
+  const getBreakdownForCategory = (cat: string): ScoreBreakdown | undefined => {
+    return scoreBreakdown?.find((b) => b.category === cat);
+  };
+
   return (
     <div className="w-full space-y-6">
       {/* Target & Executive Card */}
@@ -169,7 +177,6 @@ Summary: ${summary}`;
             </p>
           </div>
 
-          {/* Action Toolbar */}
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               id="btn-inspect-raw-data"
@@ -202,26 +209,25 @@ Summary: ${summary}`;
 
         {/* Overall Score Dial & Summary Row */}
         <div className="mt-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-          {/* Main Overall Badge */}
           <div className="md:col-span-4 lg:col-span-3 p-6 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 text-center">
             <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 block mb-2 font-bold">
               Overall Score
             </span>
-            <div className="text-6xl font-light text-white mb-2 tracking-tight">
+            <div className="text-6xl font-light text-white mb-1 tracking-tight">
               {scores.overall}
             </div>
+            <div className="text-xs text-zinc-400 mb-2 font-mono">/100</div>
             <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden mb-3">
               <div
                 className={`h-full ${overallBadge.barColor} transition-all duration-700`}
                 style={{ width: `${scores.overall}%` }}
               />
             </div>
-            <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full ${overallBadge.badgeClass}`}>
-              {overallBadge.grade}
+            <span className={`px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full ${overallBadge.badgeClass}`}>
+              Grade {scores.grade}
             </span>
           </div>
 
-          {/* Summary Text */}
           <div className="md:col-span-8 lg:col-span-9 space-y-3">
             <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-400">
               Executive Evaluation
@@ -254,6 +260,7 @@ Summary: ${summary}`;
           const Icon = cat.icon;
           const badge = getScoreBadge(cat.score);
           const isSelected = selectedCategory === cat.key;
+          const bd = getBreakdownForCategory(cat.key);
 
           return (
             <button
@@ -279,16 +286,97 @@ Summary: ${summary}`;
                 {cat.description}
               </p>
 
-              {/* Progress bar */}
               <div className="w-full h-1 bg-zinc-800 rounded-full mt-3 overflow-hidden">
                 <div
                   className={`h-full ${badge.barColor} transition-all duration-500`}
                   style={{ width: `${cat.score}%` }}
                 />
               </div>
+
+              {bd && (
+                <div className="flex items-center gap-2 mt-2 text-[9px] font-mono text-zinc-600">
+                  <span>{bd.verifiedChecks} pass</span>
+                  <span>•</span>
+                  <span>{bd.failedChecks} issues</span>
+                  {bd.unverifiedChecks > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>{bd.unverifiedChecks} unverified</span>
+                    </>
+                  )}
+                </div>
+              )}
             </button>
           );
         })}
+      </div>
+
+      {/* Score Explanation */}
+      <div className="bg-[#0A0A0A] border border-zinc-800/80 rounded-xl overflow-hidden">
+        <button
+          onClick={() => setShowBreakdown(!showBreakdown)}
+          className="w-full flex items-center justify-between p-4 text-left cursor-pointer hover:bg-zinc-900/30 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-orange-400" />
+            <span className="text-xs uppercase tracking-wider font-bold text-zinc-400">
+              How is this score calculated?
+            </span>
+          </div>
+          {showBreakdown ? (
+            <ChevronUp className="w-4 h-4 text-zinc-500" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-zinc-500" />
+          )}
+        </button>
+
+        {showBreakdown && (
+          <div className="px-4 pb-4 space-y-4 border-t border-zinc-800/60 pt-4">
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Scores are calculated <strong className="text-zinc-200">programmatically</strong> from verified deterministic checks against the crawled HTML.
+              Each check has a weight reflecting its importance. Critical issues carry double penalty.
+              Unverified checks are <strong className="text-zinc-200">excluded</strong> from scoring — they do not reduce the score.
+              AI recommendations are <strong className="text-zinc-200">separated</strong> from technical checks and do not affect scores.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {scoreBreakdown?.map((bd) => {
+                const catInfo = categories.find((c) => c.key === bd.category);
+                return (
+                  <div key={bd.category} className="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        {catInfo?.name || bd.category}
+                      </span>
+                      <span className="text-sm font-light text-zinc-200">{bd.rawScore}/{bd.maxPossible}</span>
+                    </div>
+                    <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden mb-2">
+                      <div
+                        className="h-full bg-zinc-400 rounded-full"
+                        style={{ width: `${bd.maxPossible > 0 ? (bd.rawScore / bd.maxPossible) * 100 : 0}%` }}
+                      />
+                    </div>
+                    <div className="text-[9px] font-mono text-zinc-500 flex items-center gap-2">
+                      <span>{bd.verifiedChecks} verified</span>
+                      <span>•</span>
+                      <span>{bd.failedChecks} failed</span>
+                      {bd.unverifiedChecks > 0 && (
+                        <>
+                          <span>•</span>
+                          <span>{bd.unverifiedChecks} excluded</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-zinc-500 font-mono">
+              Category weights: SEO 22% • UX 22% • Performance 20% • Conversion 18% • Accessibility 18%
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

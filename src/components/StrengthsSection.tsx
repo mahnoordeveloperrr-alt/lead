@@ -17,7 +17,7 @@ export const StrengthsSection: React.FC<StrengthsSectionProps> = ({ strengths })
             Validated Strengths
           </h3>
           <p className="text-xs text-zinc-400 mt-1 font-light">
-            Elements, conventions, and practices performing well on this page.
+            Evidence-supported positives confirmed through automated crawling.
           </p>
         </div>
         <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
@@ -35,7 +35,18 @@ export const StrengthsSection: React.FC<StrengthsSectionProps> = ({ strengths })
               <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-400 font-mono">
                 {item.category}
               </span>
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded border ${
+                    item.source === 'crawled'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                  }`}
+                >
+                  {item.source === 'crawled' ? '🔍 CRAWLED' : '✨ AI'}
+                </span>
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+              </div>
             </div>
 
             <h4 className="font-semibold text-sm text-zinc-200">
@@ -48,7 +59,7 @@ export const StrengthsSection: React.FC<StrengthsSectionProps> = ({ strengths })
 
             {item.evidence && (
               <div className="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800/80 text-[11px] font-mono text-zinc-400">
-                <span className="text-emerald-400 font-bold uppercase text-[9px] block mb-0.5">Verified Signal:</span>
+                <span className="text-emerald-400 font-bold uppercase text-[9px] block mb-0.5">Evidence:</span>
                 {item.evidence}
               </div>
             )}

@@ -46,7 +46,6 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
     { key: 'conversion', name: 'Conversion', icon: TrendingUp },
   ];
 
-  // Combine AI category findings with deterministic checks
   const allItems: Array<{
     id: string;
     category: FindingCategory;
@@ -55,7 +54,7 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
     description: string;
     evidence?: string;
     recommendation?: string;
-    source: 'automated' | 'ai';
+    source: 'crawled' | 'ai-analysis' | 'unverified';
   }> = [];
 
   // Deterministic checks
@@ -66,8 +65,8 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
       title: dc.title,
       status: dc.status,
       description: dc.message,
-      evidence: dc.metric ? `Measured value: ${dc.metric}` : undefined,
-      source: 'automated',
+      evidence: dc.evidence,
+      source: 'crawled',
     });
   });
 
@@ -83,12 +82,11 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
         description: f.description,
         evidence: f.evidence,
         recommendation: f.recommendation,
-        source: 'ai',
+        source: f.source || 'ai-analysis',
       });
     });
   });
 
-  // Filter items
   const filteredItems = allItems.filter((item) => {
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
@@ -97,7 +95,7 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
 
   const getStatusBadge = (status: FindingStatus) => {
     switch (status) {
-      case 'good':
+      case 'pass':
         return {
           icon: CheckCircle2,
           text: 'Passed',
@@ -106,15 +104,16 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
       case 'warning':
         return {
           icon: AlertTriangle,
-          text: 'Optimization',
+          text: 'Warning',
           badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
         };
-      case 'issue':
+      case 'critical':
         return {
           icon: AlertCircle,
-          text: 'Action Needed',
+          text: 'Critical',
           badge: 'bg-red-500/20 text-red-400 border-red-500/30',
         };
+      case 'unverified':
       default:
         return {
           icon: HelpCircle,
@@ -122,6 +121,22 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
           badge: 'bg-zinc-900 text-zinc-400 border-zinc-800',
         };
     }
+  };
+
+  const getSourceBadge = (source: string) => {
+    if (source === 'crawled') {
+      return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    }
+    if (source === 'ai-analysis') {
+      return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+    }
+    return 'bg-zinc-900 text-zinc-500 border-zinc-800';
+  };
+
+  const getSourceLabel = (source: string) => {
+    if (source === 'crawled') return '🔍 CRAWLED';
+    if (source === 'ai-analysis') return '✨ AI ANALYSIS';
+    return '❓ UNVERIFIED';
   };
 
   return (
@@ -137,9 +152,8 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
           </p>
         </div>
 
-        {/* Status Filter */}
         <div className="flex items-center gap-1.5 self-start md:self-auto p-1 bg-zinc-900 border border-zinc-800 rounded-lg">
-          {(['all', 'issue', 'warning', 'good', 'unverified'] as const).map((st) => (
+          {(['all', 'critical', 'warning', 'pass', 'unverified'] as const).map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -165,7 +179,7 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
               : 'bg-zinc-900/60 text-zinc-400 border-zinc-800/80 hover:bg-zinc-800 hover:text-zinc-200'
           }`}
         >
-          All Categories ({allItems.length})
+          All ({allItems.length})
         </button>
 
         {categories.map((cat) => {
@@ -224,8 +238,12 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
                     </span>
                   </div>
 
-                  <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-500 bg-zinc-950 border border-zinc-800 px-2 py-0.5 rounded">
-                    {item.source === 'automated' ? 'Crawled' : 'AI Analysis'}
+                  <span
+                    className={`text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded border ${getSourceBadge(
+                      item.source
+                    )}`}
+                  >
+                    {getSourceLabel(item.source)}
                   </span>
                 </div>
 
@@ -238,15 +256,19 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
                 </p>
 
                 {item.evidence && (
-                  <div className="p-3 rounded-lg bg-zinc-950/80 border border-zinc-800/80 text-xs font-mono text-zinc-400">
-                    <span className="text-zinc-500 font-bold uppercase tracking-wider text-[10px] block mb-0.5">Evidence:</span>
-                    {item.evidence}
+                  <div className="p-3 rounded-lg bg-zinc-950/80 border border-zinc-800/80">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-0.5">
+                      Evidence:
+                    </span>
+                    <p className="text-xs font-mono text-zinc-400 break-words leading-relaxed">
+                      {item.evidence}
+                    </p>
                   </div>
                 )}
 
                 {item.recommendation && (
                   <div className="pt-1 text-xs text-orange-400/90 font-light">
-                    <span className="font-semibold text-orange-400">Fix Recommendation: </span>
+                    <span className="font-semibold text-orange-400">Recommendation: </span>
                     {item.recommendation}
                   </div>
                 )}

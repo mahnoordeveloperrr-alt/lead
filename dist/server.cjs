@@ -214240,6 +214240,534 @@ function getApiKeyFromEnv() {
 // server/aiService.ts
 var import_fs2 = __toESM(require("fs"), 1);
 var import_path = __toESM(require("path"), 1);
+
+// server/deterministicChecks.ts
+var CATEGORY_WEIGHTS = {
+  seo: 0.22,
+  performance: 0.2,
+  ux: 0.22,
+  accessibility: 0.18,
+  conversion: 0.18
+};
+function gradeFromScore(score) {
+  if (score >= 97) return "A+";
+  if (score >= 93) return "A";
+  if (score >= 90) return "A-";
+  if (score >= 87) return "B+";
+  if (score >= 83) return "B";
+  if (score >= 80) return "B-";
+  if (score >= 77) return "C+";
+  if (score >= 73) return "C";
+  if (score >= 70) return "C-";
+  if (score >= 60) return "D";
+  return "F";
+}
+function runDeterministicChecks(data2) {
+  const checks = [];
+  checks.push({
+    id: "ssl-https",
+    category: "seo",
+    title: "HTTPS & SSL Security",
+    status: data2.isHttps ? "pass" : "critical",
+    message: data2.isHttps ? "Website serves traffic over encrypted HTTPS connection." : "Website is served over unencrypted HTTP. Modern browsers flag this as insecure and it blocks many SEO features.",
+    evidence: `Protocol: ${data2.isHttps ? "HTTPS" : "HTTP"} | URL: ${data2.finalUrl}`,
+    source: "crawled",
+    importance: "critical",
+    weight: 10
+  });
+  checks.push({
+    id: "title-presence",
+    category: "seo",
+    title: "Page Title \u2014 Presence",
+    status: data2.title ? "pass" : "critical",
+    message: data2.title ? `Page title is present: "${data2.title}"` : "Missing <title> tag. Search engines and browsers rely on page titles for indexing and tab labels.",
+    evidence: data2.title ? `Title: "${data2.title}" (${data2.title.length} chars)` : "No <title> tag found in <head>.",
+    source: "crawled",
+    importance: "critical",
+    weight: 9
+  });
+  if (data2.title) {
+    checks.push({
+      id: "title-length",
+      category: "seo",
+      title: "Page Title \u2014 Length",
+      status: data2.title.length >= 30 && data2.title.length <= 60 ? "pass" : data2.title.length > 60 ? "warning" : "warning",
+      message: data2.title.length > 60 ? `Title is ${data2.title.length} characters. Search results may truncate titles longer than 60 characters.` : data2.title.length < 30 ? `Title is only ${data2.title.length} characters. Titles of 30-60 characters tend to perform better in search results.` : `Title length is optimal at ${data2.title.length} characters.`,
+      evidence: `Title length: ${data2.title.length} chars (recommended: 30-60 chars)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 6
+    });
+  }
+  checks.push({
+    id: "meta-desc-presence",
+    category: "seo",
+    title: "Meta Description \u2014 Presence",
+    status: data2.metaDescription ? "pass" : "critical",
+    message: data2.metaDescription ? "Meta description tag is present." : "Missing meta description. Search engines will auto-generate snippets from page text, often poorly.",
+    evidence: data2.metaDescription ? `Meta description: "${data2.metaDescription.slice(0, 80)}${data2.metaDescription.length > 80 ? "..." : ""}" (${data2.metaDescription.length} chars)` : 'No <meta name="description"> tag found.',
+    source: "crawled",
+    importance: "recommended",
+    weight: 7
+  });
+  if (data2.metaDescription) {
+    checks.push({
+      id: "meta-desc-length",
+      category: "seo",
+      title: "Meta Description \u2014 Length",
+      status: data2.metaDescription.length >= 120 && data2.metaDescription.length <= 160 ? "pass" : "warning",
+      message: data2.metaDescription.length > 160 ? `Meta description is ${data2.metaDescription.length} characters. Descriptions over 160 characters are typically truncated in search results.` : data2.metaDescription.length < 120 ? `Meta description is ${data2.metaDescription.length} characters. Descriptions of 120-160 characters tend to maximize click-through rate.` : `Meta description length is optimal at ${data2.metaDescription.length} characters.`,
+      evidence: `Description length: ${data2.metaDescription.length} chars (recommended: 120-160 chars)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 5
+    });
+  }
+  checks.push({
+    id: "h1-presence",
+    category: "seo",
+    title: "H1 Primary Heading \u2014 Presence",
+    status: data2.headings.h1Count >= 1 ? "pass" : "critical",
+    message: data2.headings.h1Count >= 1 ? `H1 heading found: "${data2.headings.h1[0]?.slice(0, 60)}${(data2.headings.h1[0]?.length || 0) > 60 ? "..." : ""}"` : "No <h1> heading found. Search engines use H1 to understand the primary topic of the page.",
+    evidence: data2.headings.h1Count >= 1 ? `H1: "${data2.headings.h1[0]}" | Total H1 count: ${data2.headings.h1Count}` : "No H1 elements found in page HTML.",
+    source: "crawled",
+    importance: "critical",
+    weight: 8
+  });
+  if (data2.headings.h1Count > 1) {
+    checks.push({
+      id: "h1-multiple",
+      category: "seo",
+      title: "H1 Heading Count",
+      status: "warning",
+      message: `Found ${data2.headings.h1Count} H1 headings. Best practice is exactly one H1 per page for clear topic signaling.`,
+      evidence: `H1 headings: ${data2.headings.h1.map((h4) => `"${h4.slice(0, 40)}"`).join(", ")}`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 5
+    });
+  }
+  const hasSkippedLevels = data2.headings.h1Count > 0 && data2.headings.h2.length === 0 && data2.headings.h3.length > 0;
+  checks.push({
+    id: "heading-hierarchy",
+    category: "seo",
+    title: "Heading Hierarchy",
+    status: hasSkippedLevels ? "warning" : "pass",
+    message: hasSkippedLevels ? "Heading hierarchy skips levels (H3 appears without H2). This can confuse screen readers and crawlers." : `Heading structure: ${data2.headings.h1Count} H1, ${data2.headings.h2.length} H2, ${data2.headings.h3.length} H3.`,
+    evidence: `H1: ${data2.headings.h1Count}, H2: ${data2.headings.h2.length}, H3: ${data2.headings.h3.length} | Total: ${data2.headings.totalCount}`,
+    source: "crawled",
+    importance: "recommended",
+    weight: 3
+  });
+  checks.push({
+    id: "canonical-url",
+    category: "seo",
+    title: "Canonical URL",
+    status: data2.canonicalUrl ? "pass" : "warning",
+    message: data2.canonicalUrl ? `Canonical URL is set: ${data2.canonicalUrl}` : "No canonical URL specified. Without canonical tags, search engines may index duplicate versions of the page.",
+    evidence: data2.canonicalUrl ? `Canonical: ${data2.canonicalUrl}` : 'No <link rel="canonical"> tag found.',
+    source: "crawled",
+    importance: "recommended",
+    weight: 4
+  });
+  checks.push({
+    id: "og-metadata",
+    category: "seo",
+    title: "Open Graph Social Metadata",
+    status: data2.socialMeta.hasOgComplete ? "pass" : "warning",
+    message: data2.socialMeta.hasOgComplete ? "Complete Open Graph metadata configured (og:title, og:description, og:image)." : `Incomplete social metadata. Missing: ${[
+      !data2.socialMeta.ogTitle && "og:title",
+      !data2.socialMeta.ogDescription && "og:description",
+      !data2.socialMeta.ogImage && "og:image"
+    ].filter(Boolean).join(", ") || "og:title, og:description, og:image"}.`,
+    evidence: `og:title: ${data2.socialMeta.ogTitle ? "present" : "missing"} | og:description: ${data2.socialMeta.ogDescription ? "present" : "missing"} | og:image: ${data2.socialMeta.ogImage ? "present" : "missing"}`,
+    source: "crawled",
+    importance: "optional",
+    weight: 3
+  });
+  if (data2.hasRobotsMeta) {
+    const isNoindex = data2.robotsMeta.toLowerCase().includes("noindex");
+    checks.push({
+      id: "robots-meta",
+      category: "seo",
+      title: "Robots Meta Directive",
+      status: isNoindex ? "critical" : "pass",
+      message: isNoindex ? `Page contains "noindex" directive: "${data2.robotsMeta}". This prevents search engines from indexing the page.` : `Robots meta configured: "${data2.robotsMeta}".`,
+      evidence: `Robots meta: "${data2.robotsMeta}"`,
+      source: "crawled",
+      importance: isNoindex ? "critical" : "recommended",
+      weight: isNoindex ? 8 : 2
+    });
+  }
+  if (data2.images.totalCount === 0) {
+    checks.push({
+      id: "image-alt-text",
+      category: "accessibility",
+      title: "Image Alt Text Coverage",
+      status: "unverified",
+      message: "No <img> elements found in parsed HTML. Unable to evaluate image accessibility.",
+      evidence: "0 images detected in page HTML.",
+      source: "crawled",
+      importance: "critical",
+      weight: 0
+    });
+  } else if (data2.images.missingAltCount === 0) {
+    checks.push({
+      id: "image-alt-text",
+      category: "accessibility",
+      title: "Image Alt Text Coverage",
+      status: "pass",
+      message: `All ${data2.images.totalCount} images include descriptive alt attributes.`,
+      evidence: `${data2.images.totalCount}/${data2.images.totalCount} images have alt text (100% coverage).`,
+      source: "crawled",
+      importance: "critical",
+      weight: 10
+    });
+  } else {
+    const coverageStatus = data2.images.altCoveragePercent >= 70 ? "warning" : "critical";
+    checks.push({
+      id: "image-alt-text",
+      category: "accessibility",
+      title: "Image Alt Text Coverage",
+      status: coverageStatus,
+      message: `${data2.images.missingAltCount} of ${data2.images.totalCount} images are missing alt attributes (${data2.images.altCoveragePercent}% coverage).`,
+      evidence: `${data2.images.missingAltCount} images missing alt text. Sample sources: ${data2.images.missingAltSamples.slice(0, 3).join(", ") || "N/A"}`,
+      source: "crawled",
+      importance: "critical",
+      weight: 10
+    });
+  }
+  const hasUnfriendlyZoom = data2.viewport.includes("user-scalable=no") || data2.viewport.includes("maximum-scale=1");
+  if (!data2.hasViewportMeta) {
+    checks.push({
+      id: "viewport-meta",
+      category: "accessibility",
+      title: "Mobile Viewport Meta",
+      status: "critical",
+      message: "Missing viewport meta tag. The site will render as desktop scale on all mobile devices.",
+      evidence: 'No <meta name="viewport"> tag found.',
+      source: "crawled",
+      importance: "critical",
+      weight: 9
+    });
+  } else if (hasUnfriendlyZoom) {
+    checks.push({
+      id: "viewport-meta",
+      category: "accessibility",
+      title: "Mobile Viewport \u2014 Zoom Restriction",
+      status: "warning",
+      message: "Viewport restricts pinch-to-zoom (user-scalable=no or maximum-scale=1). This reduces accessibility for visually impaired users.",
+      evidence: `Viewport: "${data2.viewport}"`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 4
+    });
+  } else {
+    checks.push({
+      id: "viewport-meta",
+      category: "accessibility",
+      title: "Mobile Viewport Meta",
+      status: "pass",
+      message: "Responsive viewport meta tag is properly configured.",
+      evidence: `Viewport: "${data2.viewport}"`,
+      source: "crawled",
+      importance: "critical",
+      weight: 9
+    });
+  }
+  const keyLandmarks = (data2.semantics.hasHeader ? 1 : 0) + (data2.semantics.hasNav ? 1 : 0) + (data2.semantics.hasMain ? 1 : 0) + (data2.semantics.hasFooter ? 1 : 0);
+  checks.push({
+    id: "semantic-landmarks",
+    category: "accessibility",
+    title: "Semantic HTML Landmarks",
+    status: keyLandmarks >= 3 ? "pass" : keyLandmarks >= 1 ? "warning" : "critical",
+    message: keyLandmarks >= 3 ? `Proper semantic document structure detected (${data2.semantics.tagsFound.join(", ")}).` : keyLandmarks >= 1 ? `Limited semantic landmarks (${data2.semantics.tagsFound.join(", ")}). Consider adding <main>, <nav>, and <footer>.` : "No HTML5 semantic landmarks detected. Page relies entirely on unsemantic containers.",
+    evidence: `Landmarks found: ${data2.semantics.tagsFound.join(", ") || "none"} (${data2.semantics.totalLandmarks} total)`,
+    source: "crawled",
+    importance: "recommended",
+    weight: 5
+  });
+  if (data2.links.emptyTextCount > 0) {
+    checks.push({
+      id: "empty-links",
+      category: "accessibility",
+      title: "Accessible Link Text",
+      status: data2.links.emptyTextCount > 5 ? "critical" : "warning",
+      message: `${data2.links.emptyTextCount} link(s) have no visible text or aria-label. Screen readers cannot describe these navigation targets.`,
+      evidence: `${data2.links.emptyTextCount} links without accessible text detected.`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 5
+    });
+  } else {
+    checks.push({
+      id: "empty-links",
+      category: "accessibility",
+      title: "Accessible Link Text",
+      status: "pass",
+      message: "All links have accessible text content.",
+      evidence: `0 empty link text anchors found across ${data2.links.totalCount} total links.`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 5
+    });
+  }
+  if (data2.links.emptyButtonCount > 0) {
+    checks.push({
+      id: "empty-buttons",
+      category: "accessibility",
+      title: "Accessible Button Names",
+      status: data2.links.emptyButtonCount > 3 ? "critical" : "warning",
+      message: `${data2.links.emptyButtonCount} button(s) lack accessible names (no text, aria-label, or title).`,
+      evidence: `${data2.links.emptyButtonCount} buttons without accessible names.`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 4
+    });
+  }
+  if (data2.forms.count > 0 && data2.forms.hasInputsWithoutLabels) {
+    checks.push({
+      id: "form-labels",
+      category: "accessibility",
+      title: "Form Input Labels",
+      status: "warning",
+      message: `${data2.forms.inputsWithoutLabels} of ${data2.forms.totalInputs} form inputs lack associated labels, aria-labels, or placeholders.`,
+      evidence: `${data2.forms.inputsWithoutLabels}/${data2.forms.totalInputs} inputs without labels across ${data2.forms.count} form(s).`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 5
+    });
+  }
+  if (data2.responseTimeMs < 300) {
+    checks.push({
+      id: "ttfb",
+      category: "performance",
+      title: "Server Latency (TTFB)",
+      status: "pass",
+      message: `Fast server response in ${data2.responseTimeMs}ms.`,
+      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 300ms)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 8
+    });
+  } else if (data2.responseTimeMs < 800) {
+    checks.push({
+      id: "ttfb",
+      category: "performance",
+      title: "Server Latency (TTFB)",
+      status: "warning",
+      message: `Moderate server latency at ${data2.responseTimeMs}ms. Could benefit from edge caching or CDN.`,
+      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 300ms)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 8
+    });
+  } else {
+    checks.push({
+      id: "ttfb",
+      category: "performance",
+      title: "Server Latency (TTFB)",
+      status: "critical",
+      message: `Slow server response at ${data2.responseTimeMs}ms. Exceeds 800ms threshold for acceptable user experience.`,
+      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 300ms)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 8
+    });
+  }
+  const htmlSizeKB = Math.round(data2.htmlSizeBytes / 1024);
+  if (htmlSizeKB > 500) {
+    checks.push({
+      id: "html-size",
+      category: "performance",
+      title: "HTML Document Size",
+      status: "warning",
+      message: `HTML payload is ${htmlSizeKB} KB. Large HTML increases parse time and memory usage.`,
+      evidence: `HTML size: ${htmlSizeKB} KB (${data2.htmlSizeBytes} bytes)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 4
+    });
+  } else if (htmlSizeKB > 1e3) {
+    checks.push({
+      id: "html-size",
+      category: "performance",
+      title: "HTML Document Size",
+      status: "critical",
+      message: `HTML payload is ${htmlSizeKB} KB. Extremely large HTML document.`,
+      evidence: `HTML size: ${htmlSizeKB} KB (${data2.htmlSizeBytes} bytes)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 6
+    });
+  } else {
+    checks.push({
+      id: "html-size",
+      category: "performance",
+      title: "HTML Document Size",
+      status: "pass",
+      message: `HTML payload is ${htmlSizeKB} KB \u2014 within acceptable range.`,
+      evidence: `HTML size: ${htmlSizeKB} KB (${data2.htmlSizeBytes} bytes)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 4
+    });
+  }
+  if (data2.performanceSignals.scriptsCount > 20) {
+    checks.push({
+      id: "script-count",
+      category: "performance",
+      title: "External Scripts",
+      status: "warning",
+      message: `${data2.performanceSignals.scriptsCount} <script> tags detected. Excessive scripts increase page load time and execution overhead.`,
+      evidence: `${data2.performanceSignals.scriptsCount} script tags found in HTML.`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 5
+    });
+  } else {
+    checks.push({
+      id: "script-count",
+      category: "performance",
+      title: "External Scripts",
+      status: "pass",
+      message: `${data2.performanceSignals.scriptsCount} script tags \u2014 reasonable script count.`,
+      evidence: `${data2.performanceSignals.scriptsCount} script tags found in HTML.`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 5
+    });
+  }
+  if (data2.performanceSignals.stylesheetsCount > 10) {
+    checks.push({
+      id: "stylesheet-count",
+      category: "performance",
+      title: "Stylesheet Count",
+      status: "warning",
+      message: `${data2.performanceSignals.stylesheetsCount} external stylesheets detected. Many stylesheets increase HTTP requests.`,
+      evidence: `${data2.performanceSignals.stylesheetsCount} <link rel="stylesheet"> tags.`,
+      source: "crawled",
+      importance: "optional",
+      weight: 3
+    });
+  }
+  checks.push({
+    id: "cta-presence",
+    category: "conversion",
+    title: "Call-to-Action Links",
+    status: data2.links.ctaLinks.length > 0 ? "pass" : "warning",
+    message: data2.links.ctaLinks.length > 0 ? `${data2.links.ctaLinks.length} CTA-like link(s) detected: "${data2.links.ctaLinks.slice(0, 3).join('", "')}"` : "No explicit CTA anchor text detected. Primary conversion actions may not be clear to visitors.",
+    evidence: data2.links.ctaLinks.length > 0 ? `CTAs found: ${data2.links.ctaLinks.join(", ")}` : 'No CTA phrases (e.g., "Get Started", "Contact Us", "Sign Up") detected in link text.',
+    source: "crawled",
+    importance: "recommended",
+    weight: 7
+  });
+  if (data2.forms.count === 0) {
+    checks.push({
+      id: "form-presence",
+      category: "conversion",
+      title: "Contact/Lead Form",
+      status: "warning",
+      message: "No <form> elements detected. Visitors may have no direct way to submit inquiries.",
+      evidence: "0 forms found in page HTML.",
+      source: "crawled",
+      importance: "recommended",
+      weight: 4
+    });
+  } else {
+    checks.push({
+      id: "form-presence",
+      category: "conversion",
+      title: "Contact/Lead Form",
+      status: "pass",
+      message: `${data2.forms.count} form(s) detected on the page.`,
+      evidence: `${data2.forms.count} form(s) with actions: ${data2.forms.sampleFormActions.join(", ")}`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 4
+    });
+  }
+  checks.push({
+    id: "page-language",
+    category: "accessibility",
+    title: "Page Language Declaration",
+    status: data2.language ? "pass" : "warning",
+    message: data2.language ? `Page language declared as "${data2.language}".` : "No lang attribute on <html>. Screen readers cannot determine the correct pronunciation.",
+    evidence: data2.language ? `lang="${data2.language}"` : "No lang attribute found on <html>.",
+    source: "crawled",
+    importance: "recommended",
+    weight: 3
+  });
+  return checks;
+}
+function calculateScores(checks, data2) {
+  const categories = ["seo", "performance", "ux", "accessibility", "conversion"];
+  const breakdown = [];
+  for (const cat of categories) {
+    const catChecks = checks.filter((c4) => c4.category === cat);
+    let rawScore = 0;
+    let maxPossible = 0;
+    let verifiedChecks = 0;
+    let failedChecks = 0;
+    let unverifiedChecks = 0;
+    for (const check of catChecks) {
+      if (check.status === "unverified") {
+        unverifiedChecks++;
+        continue;
+      }
+      maxPossible += check.weight;
+      if (check.status === "pass") {
+        rawScore += check.weight;
+        verifiedChecks++;
+      } else if (check.status === "warning") {
+        rawScore += check.weight * 0.5;
+        failedChecks++;
+      } else if (check.status === "critical") {
+        rawScore += check.weight * 0.2;
+        failedChecks++;
+      }
+    }
+    const score = maxPossible > 0 ? Math.round(Math.min(100, Math.max(10, rawScore / maxPossible * 100))) : 75;
+    breakdown.push({
+      category: cat,
+      rawScore,
+      maxPossible,
+      grade: gradeFromScore(score),
+      verifiedChecks,
+      failedChecks,
+      unverifiedChecks
+    });
+  }
+  let overallWeighted = 0;
+  let totalWeight = 0;
+  for (const b2 of breakdown) {
+    const w = CATEGORY_WEIGHTS[b2.category];
+    overallWeighted += b2.rawScore / Math.max(b2.maxPossible, 1) * 100 * w;
+    totalWeight += w;
+  }
+  const overall = totalWeight > 0 ? Math.round(Math.min(100, Math.max(10, overallWeighted / totalWeight))) : 75;
+  const scores = {
+    ux: breakdown.find((b2) => b2.category === "ux")?.rawScore !== void 0 ? Math.round(breakdown.find((b2) => b2.category === "ux").rawScore / Math.max(breakdown.find((b2) => b2.category === "ux").maxPossible, 1) * 100) || 75 : 75,
+    seo: Math.round(breakdown.find((b2) => b2.category === "seo").rawScore / Math.max(breakdown.find((b2) => b2.category === "seo").maxPossible, 1) * 100) || 75,
+    performance: Math.round(breakdown.find((b2) => b2.category === "performance").rawScore / Math.max(breakdown.find((b2) => b2.category === "performance").maxPossible, 1) * 100) || 75,
+    accessibility: Math.round(breakdown.find((b2) => b2.category === "accessibility").rawScore / Math.max(breakdown.find((b2) => b2.category === "accessibility").maxPossible, 1) * 100) || 75,
+    conversion: Math.round(breakdown.find((b2) => b2.category === "conversion").rawScore / Math.max(breakdown.find((b2) => b2.category === "conversion").maxPossible, 1) * 100) || 75,
+    overall,
+    grade: gradeFromScore(overall)
+  };
+  scores.ux = Math.min(100, Math.max(10, scores.ux));
+  scores.seo = Math.min(100, Math.max(10, scores.seo));
+  scores.performance = Math.min(100, Math.max(10, scores.performance));
+  scores.accessibility = Math.min(100, Math.max(10, scores.accessibility));
+  scores.conversion = Math.min(100, Math.max(10, scores.conversion));
+  scores.overall = Math.round(
+    scores.ux * 0.22 + scores.seo * 0.22 + scores.performance * 0.2 + scores.accessibility * 0.18 + scores.conversion * 0.18
+  );
+  scores.grade = gradeFromScore(scores.overall);
+  return { scores, breakdown };
+}
+
+// server/aiService.ts
 function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
   if (!apiKey) {
@@ -214248,9 +214776,7 @@ function getGeminiClient() {
   return new GoogleGenAI2({
     apiKey,
     httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build"
-      }
+      headers: { "User-Agent": "aistudio-build" }
     }
   });
 }
@@ -214261,395 +214787,62 @@ function loadAuditChecklist() {
       return import_fs2.default.readFileSync(checklistPath, "utf-8");
     }
   } catch (err2) {
-    console.warn("Could not read website-audit-checklist.md, using built-in framework", err2);
+    console.warn("Could not read website-audit-checklist.md", err2);
   }
-  return `
-# Audit Framework:
-01 UX/UI: Navigation, Hero Section, Typography, Spacing, Visual Hierarchy, CTA, Forms, Content Clarity, Trust Signals.
-02 Mobile: Responsive Layout, Text Readability, Touch Targets, Mobile Navigation, Viewport.
-03 Performance: Asset Weight, Scripts/Stylesheets count, Latency, Bloat indicators.
-04 SEO: Title, Meta Description, H1 & Headings Hierarchy, Semantic HTML, Alt Text, Canonical, Social Meta.
-05 Accessibility: Missing Alt Text, Empty Links/Buttons, Form Labels, Semantic Landmarks, Viewport zooming.
-06 Conversion: Value Proposition, CTA prominence, Friction points, Social Proof, Redesign Opportunities.
-`;
+  return `# Audit Framework: UX/UI, Mobile, Performance, SEO, Accessibility, Conversion.`;
 }
-function generateDeterministicAuditFallback(extractedData, deterministicChecks) {
-  console.log("[AI Engine] Synthesizing comprehensive deterministic fallback audit based on crawled DOM metrics.");
-  let uxScore = 75;
-  if (extractedData.headings.h1Count === 1) uxScore += 10;
-  else if (extractedData.headings.h1Count === 0) uxScore -= 15;
-  if (extractedData.links.ctaLinks.length > 0) uxScore += 8;
-  if (extractedData.hasViewportMeta) uxScore += 5;
-  else uxScore -= 20;
-  if (extractedData.forms.hasInputsWithoutLabels) uxScore -= 10;
-  uxScore = Math.min(100, Math.max(25, uxScore));
-  let seoScore = 70;
-  if (extractedData.isHttps) seoScore += 10;
-  else seoScore -= 25;
-  if (extractedData.title && extractedData.title.length >= 20 && extractedData.title.length <= 65) seoScore += 10;
-  else if (!extractedData.title) seoScore -= 20;
-  if (extractedData.metaDescription && extractedData.metaDescription.length >= 50) seoScore += 10;
-  else if (!extractedData.metaDescription) seoScore -= 15;
-  if (extractedData.headings.h1Count === 1) seoScore += 8;
-  if (extractedData.canonicalUrl) seoScore += 5;
-  if (extractedData.socialMeta.hasOgComplete) seoScore += 7;
-  seoScore = Math.min(100, Math.max(20, seoScore));
-  let perfScore = 80;
-  if (extractedData.responseTimeMs < 350) perfScore += 15;
-  else if (extractedData.responseTimeMs < 800) perfScore += 5;
-  else if (extractedData.responseTimeMs > 1500) perfScore -= 25;
-  else perfScore -= 10;
-  if (extractedData.performanceSignals.scriptsCount > 25) perfScore -= 15;
-  else if (extractedData.performanceSignals.scriptsCount > 15) perfScore -= 8;
-  if (extractedData.htmlSizeBytes > 1024 * 500) perfScore -= 12;
-  perfScore = Math.min(100, Math.max(20, perfScore));
-  let a11yScore = extractedData.images.totalCount > 0 ? extractedData.images.altCoveragePercent : 80;
-  if (extractedData.semantics.hasMain && extractedData.semantics.hasNav) a11yScore += 5;
-  if (extractedData.links.emptyTextCount > 0) a11yScore -= Math.min(20, extractedData.links.emptyTextCount * 4);
-  if (extractedData.forms.hasInputsWithoutLabels) a11yScore -= 10;
-  a11yScore = Math.min(100, Math.max(15, Math.round(a11yScore)));
-  let croScore = 70;
-  if (extractedData.links.ctaLinks.length > 0) croScore += 12;
-  else croScore -= 15;
-  if (extractedData.headings.h1Count === 1) croScore += 8;
-  if (extractedData.socialMeta.hasOgComplete) croScore += 5;
-  if (extractedData.forms.count > 0 && !extractedData.forms.hasInputsWithoutLabels) croScore += 5;
-  croScore = Math.min(100, Math.max(25, croScore));
-  const overall = Math.round(
-    uxScore * 0.25 + seoScore * 0.2 + perfScore * 0.2 + a11yScore * 0.15 + croScore * 0.2
-  );
-  const scores = {
-    ux: uxScore,
-    seo: seoScore,
-    performance: perfScore,
-    accessibility: a11yScore,
-    conversion: croScore,
-    overall
-  };
-  const highPriorityIssues = [];
-  const failingChecks = deterministicChecks.filter((c4) => c4.status === "issue" || c4.status === "warning");
-  for (let i6 = 0; i6 < failingChecks.length && highPriorityIssues.length < 5; i6++) {
-    const c4 = failingChecks[i6];
-    highPriorityIssues.push({
-      id: `issue-${i6 + 1}`,
-      title: c4.title,
-      category: c4.category,
-      severity: c4.status === "issue" ? "high" : "medium",
-      problem: c4.message,
-      evidence: c4.metric || `Detected in initial DOM crawl of ${extractedData.domain}`,
-      impact: c4.category === "seo" ? "Affects search engine crawling visibility and SERP ranking prominence." : c4.category === "accessibility" ? "Creates navigation barriers for screen readers and assistive technology users." : c4.category === "performance" ? "Increases user bounce rates and degrades mobile page experience." : "Reduces user engagement and conversion rate potential.",
-      recommendation: c4.id === "ssl-https" ? "Migrate all traffic to secure HTTPS with automatic TLS redirection." : c4.id === "page-title" ? "Add a unique, descriptive <title> tag between 30 and 60 characters containing primary keywords." : c4.id === "meta-description" ? "Add a 120-160 character meta description explaining the primary value proposition." : c4.id === "h1-heading" ? "Structure the hero section with exactly one clear, high-impact <h1> heading." : c4.id === "image-alt-tags" ? 'Add descriptive alt attributes to all content images; use empty alt="" only for decorative icons.' : c4.id === "response-latency" ? "Deploy CDN caching, optimize server backend processes, and enable gzip/brotli compression." : "Refactor markup according to modern web accessibility and SEO standards."
-    });
-  }
-  if (highPriorityIssues.length === 0) {
-    highPriorityIssues.push({
-      id: "issue-1",
-      title: "Call to Action Visual Prominence",
-      category: "conversion",
-      severity: "medium",
-      problem: "Primary conversion action could benefit from higher visual contrast and strategic repeat placement.",
-      evidence: `${extractedData.links.ctaLinks.length} primary CTA keywords identified in page links.`,
-      impact: "Improving CTA contrast directly lifts inbound lead capture and conversion rates.",
-      recommendation: "Ensure a visually distinct high-contrast CTA button is fixed above the fold and repeated at the footer."
-    });
-  }
-  const categoryFindings = {
-    ux: [
-      {
-        id: "ux-1",
-        category: "ux",
-        title: "Document Outline & Typography",
-        status: extractedData.headings.h1Count === 1 ? "good" : "warning",
-        description: `Found ${extractedData.headings.totalCount} total heading tags (${extractedData.headings.h1Count} H1, ${extractedData.headings.h2.length} H2, ${extractedData.headings.h3.length} H3).`,
-        evidence: extractedData.headings.h1[0] ? `H1: "${extractedData.headings.h1[0]}"` : "No H1 found",
-        recommendation: "Ensure a clear visual hierarchy from H1 value proposition down to supporting H2 feature blocks."
-      },
-      {
-        id: "ux-2",
-        category: "ux",
-        title: "Mobile Responsive Viewport",
-        status: extractedData.hasViewportMeta ? "good" : "issue",
-        description: extractedData.hasViewportMeta ? "Responsive viewport is declared for mobile screen scaling." : "Viewport tag is missing, causing mobile devices to render fixed desktop layout.",
-        evidence: extractedData.viewport || "None"
-      }
-    ],
-    seo: [
-      {
-        id: "seo-1",
-        category: "seo",
-        title: "Page Title & Metadata",
-        status: extractedData.title ? "good" : "issue",
-        description: extractedData.title ? `Page title is present (${extractedData.title.length} characters).` : "Page title is missing.",
-        evidence: extractedData.title || "Missing title",
-        recommendation: "Maintain a 30-60 character page title with primary service/brand keywords."
-      },
-      {
-        id: "seo-2",
-        category: "seo",
-        title: "Meta Description & Snippet",
-        status: extractedData.metaDescription ? "good" : "warning",
-        description: extractedData.metaDescription ? `Meta description found (${extractedData.metaDescription.length} characters).` : "Meta description tag is missing from head.",
-        evidence: extractedData.metaDescription || "Missing meta description",
-        recommendation: "Craft a compelling 120-160 character summary that invites search clicks."
-      },
-      {
-        id: "seo-3",
-        category: "seo",
-        title: "Protocol & Canonical Directives",
-        status: extractedData.isHttps ? "good" : "issue",
-        description: `Traffic served over ${extractedData.isHttps ? "HTTPS" : "HTTP"}. Canonical tag: ${extractedData.canonicalUrl || "Not specified"}.`,
-        evidence: extractedData.finalUrl
-      }
-    ],
-    performance: [
-      {
-        id: "perf-1",
-        category: "performance",
-        title: "Server Latency (TTFB)",
-        status: extractedData.responseTimeMs < 500 ? "good" : extractedData.responseTimeMs < 1200 ? "warning" : "issue",
-        description: `Server responded with initial HTML in ${extractedData.responseTimeMs}ms.`,
-        evidence: `${extractedData.responseTimeMs}ms response latency`,
-        recommendation: "Target server response time under 300ms using global CDN edge caching."
-      },
-      {
-        id: "perf-2",
-        category: "performance",
-        title: "DOM Payload & Script Density",
-        status: extractedData.performanceSignals.scriptsCount <= 20 ? "good" : "warning",
-        description: `HTML document size is ${Math.round(extractedData.htmlSizeBytes / 1024)} KB with ${extractedData.performanceSignals.scriptsCount} script tags and ${extractedData.performanceSignals.stylesheetsCount} stylesheets.`,
-        evidence: `${extractedData.htmlSizeBytes} bytes, ${extractedData.performanceSignals.scriptsCount} scripts`
-      }
-    ],
-    accessibility: [
-      {
-        id: "a11y-1",
-        category: "accessibility",
-        title: "Image Alt Text Coverage",
-        status: extractedData.images.missingAltCount === 0 ? "good" : extractedData.images.altCoveragePercent >= 70 ? "warning" : "issue",
-        description: `${extractedData.images.withAltCount} of ${extractedData.images.totalCount} images include alt text (${extractedData.images.altCoveragePercent}% coverage).`,
-        evidence: `${extractedData.images.missingAltCount} images missing alt text`,
-        recommendation: "Provide concise descriptive alt text for informative images."
-      },
-      {
-        id: "a11y-2",
-        category: "accessibility",
-        title: "Semantic HTML Landmarks",
-        status: extractedData.semantics.totalLandmarks >= 3 ? "good" : "warning",
-        description: `Detected landmarks: ${extractedData.semantics.tagsFound.join(", ") || "none"}.`,
-        evidence: `hasMain: ${extractedData.semantics.hasMain}, hasNav: ${extractedData.semantics.hasNav}`
-      }
-    ],
-    conversion: [
-      {
-        id: "cro-1",
-        category: "conversion",
-        title: "Call-to-Action Signals",
-        status: extractedData.links.ctaLinks.length > 0 ? "good" : "warning",
-        description: extractedData.links.ctaLinks.length > 0 ? `Detected ${extractedData.links.ctaLinks.length} actionable CTA links ("${extractedData.links.ctaLinks.slice(0, 3).join('", "')}").` : "No explicit primary CTA anchor phrases detected in initial navigation or hero.",
-        evidence: `${extractedData.links.ctaLinks.length} CTA links found`,
-        recommendation: 'Make primary action verbs ("Get Started", "Book Demo", "Contact") visually prominent.'
-      },
-      {
-        id: "cro-2",
-        category: "conversion",
-        title: "Social Share Cards & Trust",
-        status: extractedData.socialMeta.hasOgComplete ? "good" : "warning",
-        description: extractedData.socialMeta.hasOgComplete ? "Open Graph metadata is completely configured for social sharing." : "Incomplete Open Graph tags. Social links will not render rich image cards on Slack, Twitter, or LinkedIn.",
-        evidence: `og:image: ${extractedData.socialMeta.ogImage ? "present" : "missing"}`
-      }
-    ]
-  };
-  const strengths = [];
-  if (extractedData.isHttps) {
-    strengths.push({
-      title: "Encrypted HTTPS Connection",
-      category: "seo",
-      description: "Website operates on secure TLS encryption to protect visitor privacy.",
-      evidence: extractedData.finalUrl
-    });
-  }
-  if (extractedData.hasViewportMeta) {
-    strengths.push({
-      title: "Configured Mobile Viewport",
-      category: "ux",
-      description: "Page markup includes responsive viewport directive for fluid multi-device scaling.",
-      evidence: extractedData.viewport || "viewport meta tag"
-    });
-  }
-  if (extractedData.title) {
-    strengths.push({
-      title: "Descriptive Page Title",
-      category: "seo",
-      description: "Title tag is configured to inform search engine crawlers and browser tabs.",
-      evidence: `"${extractedData.title}"`
-    });
-  }
-  if (extractedData.responseTimeMs < 600) {
-    strengths.push({
-      title: "Rapid Server Response",
-      category: "performance",
-      description: `Fast initial HTML delivery from the web server in ${extractedData.responseTimeMs}ms.`,
-      evidence: `${extractedData.responseTimeMs}ms TTFB`
-    });
-  }
-  const redesignOpportunities = [
-    {
-      area: "Hero Section & Value Proposition",
-      currentObservation: extractedData.headings.h1[0] ? `Current hero headline: "${extractedData.headings.h1[0]}".` : "Hero section lacks a unified, high-contrast H1 value proposition headline.",
-      recommendedRedesign: "Implement an editorial hero layout featuring a 5-second value proposition, dual action CTA buttons (Primary Solid + Secondary Outline), and customer proof logos.",
-      expectedImpact: "High Impact"
-    },
-    {
-      area: "Mobile Conversion Flow & Touch Targets",
-      currentObservation: "Mobile user journey relies on multi-step navigation menus without a sticky mobile action bar.",
-      recommendedRedesign: "Introduce a fixed bottom action bar for mobile viewports, optimize touch targets to 48px+, and streamline contact inquiry forms to 3 core fields.",
-      expectedImpact: "High Impact"
-    },
-    {
-      area: "Visual Proof & Trust Architecture",
-      currentObservation: "Social proof, client metrics, and reviews can be elevated into dedicated high-contrast testimonial blocks.",
-      recommendedRedesign: "Add a structured social proof section with verified rating badges, client logo carousel, and quantifiable outcome metrics.",
-      expectedImpact: "Medium Impact"
-    }
-  ];
-  return {
-    website: {
-      url: extractedData.url,
-      finalUrl: extractedData.finalUrl,
-      domain: extractedData.domain,
-      title: extractedData.title || extractedData.domain,
-      description: extractedData.metaDescription,
-      scannedAt: (/* @__PURE__ */ new Date()).toISOString()
-    },
-    scores,
-    summary: `Audit completed for ${extractedData.domain}. Measured ${extractedData.headings.totalCount} headings, ${extractedData.images.totalCount} images, ${extractedData.links.totalCount} links, and server latency of ${extractedData.responseTimeMs}ms.`,
-    highPriorityIssues,
-    categoryFindings,
-    strengths,
-    redesignOpportunities,
-    deterministicChecks,
-    extractedData,
-    limitations: [
-      "Static DOM crawler evaluated initial HTML and server response headers.",
-      "Single-page application (SPA) client-rendered hydration may load additional components dynamically in the browser.",
-      "Brand aesthetic resonance and emotional tone require human design review."
-    ]
-  };
-}
-async function generateAuditWithAi(extractedData, deterministicChecks) {
-  const configuredModel = process.env.AI_MODEL || "gemini-3.7-flash";
-  const checklist = loadAuditChecklist();
-  const promptPayload = {
-    websiteOverview: {
-      url: extractedData.url,
-      finalUrl: extractedData.finalUrl,
-      domain: extractedData.domain,
-      httpStatus: extractedData.httpStatus,
-      measuredResponseTimeMs: extractedData.responseTimeMs,
-      htmlSizeBytes: extractedData.htmlSizeBytes,
-      isHttps: extractedData.isHttps,
-      title: extractedData.title,
-      metaDescription: extractedData.metaDescription,
-      canonicalUrl: extractedData.canonicalUrl,
-      language: extractedData.language,
-      viewportMeta: extractedData.viewport
-    },
-    headingsAnalysis: {
-      total: extractedData.headings.totalCount,
-      h1Count: extractedData.headings.h1Count,
-      h1Items: extractedData.headings.h1,
-      h2Count: extractedData.headings.h2.length,
-      sampleH2: extractedData.headings.h2.slice(0, 8),
-      sampleH3: extractedData.headings.h3.slice(0, 8)
-    },
-    linksAnalysis: {
-      totalCount: extractedData.links.totalCount,
-      internal: extractedData.links.internalCount,
-      external: extractedData.links.externalCount,
-      emptyTextAnchors: extractedData.links.emptyTextCount,
-      detectedCtaLinks: extractedData.links.ctaLinks,
-      sampleNavLinks: extractedData.links.sampleLinks.slice(0, 10).map((l2) => l2.text)
-    },
-    imagesAnalysis: {
-      totalImages: extractedData.images.totalCount,
-      withAlt: extractedData.images.withAltCount,
-      missingAltCount: extractedData.images.missingAltCount,
-      altCoveragePercent: extractedData.images.altCoveragePercent,
-      sampleMissingAltSources: extractedData.images.missingAltSamples.slice(0, 5)
-    },
-    semanticsAndAccessibility: {
-      semanticTagsPresent: extractedData.semantics.tagsFound,
-      hasMain: extractedData.semantics.hasMain,
-      hasNav: extractedData.semantics.hasNav,
-      hasHeader: extractedData.semantics.hasHeader,
-      hasFooter: extractedData.semantics.hasFooter,
-      formsCount: extractedData.forms.count,
-      hasInputsWithoutLabels: extractedData.forms.hasInputsWithoutLabels
-    },
-    performanceSignals: {
-      scriptsCount: extractedData.performanceSignals.scriptsCount,
-      stylesheetsCount: extractedData.performanceSignals.stylesheetsCount,
-      inlineStylesCount: extractedData.performanceSignals.inlineStyleCount,
-      approximateWordCount: extractedData.performanceSignals.approxWordCount,
-      measuredLatencyMs: extractedData.responseTimeMs
-    },
-    socialMetadata: extractedData.socialMeta,
-    automatedDeterministicChecks: deterministicChecks.map((c4) => ({
-      check: c4.title,
-      category: c4.category,
-      status: c4.status,
-      message: c4.message,
-      metric: c4.metric
-    })),
-    bodyTextExcerpt: extractedData.bodySnippet.slice(0, 2800)
-  };
-  const systemInstruction = `You are an elite web design strategist, technical SEO architect, and conversion rate optimization (CRO) auditor.
-Analyze ONLY the concrete evidence provided in the website extraction and deterministic checks.
+function buildSystemPrompt(checklist) {
+  return `You are an expert website auditor and web design strategist.
 
-CRITICAL INSTRUCTIONS:
-1. NEVER invent or hallucinate metrics, headings, or missing elements.
-2. When referencing an issue or strength, quote the exact extracted evidence (e.g., specific H1 text, title character count, missing alt count, latency in milliseconds, CTA phrases).
-3. If an aspect cannot be verified from the server-side crawl (such as deep client-side runtime layout shifts or interactive JS modals), label its status as "unverified" or state "Unable to verify without client-side rendering".
-4. Calculate realistic, mathematically reasoned scores (0 to 100) for each category based on the extracted data:
-   - UX Score: Navigation clarity, value proposition in H1, CTA presence, content hierarchy, trust signals.
-   - SEO Score: Title tag presence/length, meta description, H1 structure, semantic HTML landmarks, Open Graph tags.
-   - Performance Score: Response latency, HTML size, script/style density, asset weight indicators.
-   - Accessibility Score: Image alt tag coverage %, semantic landmarks, empty link text, form labels, viewport zoom.
-   - Conversion Score: CTA prominence, clarity of offer in body snippet, friction points, social proof.
-   - Overall Score: Weighted average of the 5 categories.
-5. Provide 3 to 6 High Priority Issues with:
-   - 'title': concise problem name
-   - 'category': one of 'ux' | 'seo' | 'performance' | 'accessibility' | 'conversion'
-   - 'severity': 'high' | 'medium' | 'low'
-   - 'problem': precise explanation
-   - 'evidence': specific extracted snippet or metric
-   - 'impact': why this hurts users or business
-   - 'recommendation': concrete, actionable fix
-6. Provide 2 to 4 verified Strengths (what the website did well, backed by extracted data).
-7. Provide 3 to 5 Redesign Opportunities specifically structured to help a web design & development agency pitch modern website redesign solutions (e.g. Hero section redesign, CTA optimization, Trust section, Navigation modernization, Mobile UX).
-8. Return strictly valid JSON following the required schema.
+CRITICAL RULES \u2014 READ BEFORE ANALYZING:
 
-Evaluation Checklist Framework:
+1. You are an INTERPRETER, not the source of truth.
+   - Measured facts are provided to you by the crawling system.
+   - You MUST NOT invent, fabricate, or assume any measurements.
+   - Never claim something was "tested" or "measured" unless the evidence data explicitly shows it.
+
+2. NEVER invent:
+   - Performance metrics (Lighthouse, Core Web Vitals, LCP, CLS, INP)
+   - Mobile interaction behavior (touch targets, navigation usability, scroll behavior)
+   - Business metrics (conversion rates, bounce rates, visitor counts)
+   - Visual rendering details (contrast ratios, color choices, font sizes)
+   - User behavior patterns (users leave, visitors are confused)
+   - Customer reviews, testimonials, or third-party ratings
+   - Technology stack details not in the evidence
+   - A/B test results or analytics data
+
+3. LABEL everything you provide:
+   - If it's based on the crawled data \u2192 mark as "AI ANALYSIS \u2014 Interpretation"
+   - If you cannot verify it \u2192 mark as "UNVERIFIED"
+   - If it contradicts the evidence \u2192 DO NOT include it
+
+4. DO NOT PROVIDE SCORES.
+   - Scores are calculated programmatically from verified checks.
+   - Do not include any "scores" or "ratings" in your response.
+
+5. For each finding, you MUST:
+   - Reference specific evidence from the extracted data
+   - Use exact numbers, counts, or measurements from the evidence
+   - Clearly separate what was measured vs what you recommend
+
+6. For the Transformation Blueprint:
+   - Each recommendation must have: Problem, Evidence, Impact, Redesign Strategy, Priority
+   - Never invent business metrics or guaranteed improvements
+   - Use language like "potential improvement" not "will increase by X%"
+
+7. Be honest about limitations:
+   - If something cannot be verified, say so
+   - If a check is ambiguous, label it UNVERIFIED
+   - Quality over completeness
+
+Evaluation Checklist:
 ${checklist}`;
-  const responseSchema = {
+}
+function getResponseSchema() {
+  return {
     type: Type.OBJECT,
     properties: {
-      scores: {
-        type: Type.OBJECT,
-        properties: {
-          ux: { type: Type.INTEGER, description: "UX & UI score 0-100" },
-          seo: { type: Type.INTEGER, description: "SEO score 0-100" },
-          performance: { type: Type.INTEGER, description: "Performance score 0-100" },
-          accessibility: { type: Type.INTEGER, description: "Accessibility score 0-100" },
-          conversion: { type: Type.INTEGER, description: "Conversion opportunity score 0-100" },
-          overall: { type: Type.INTEGER, description: "Overall weighted score 0-100" }
-        },
-        required: ["ux", "seo", "performance", "accessibility", "conversion", "overall"]
-      },
-      summary: {
-        type: Type.STRING,
-        description: "Executive 2-3 sentence summary of the website audit findings."
-      },
+      summary: { type: Type.STRING, description: "2-3 sentence executive summary of findings." },
       highPriorityIssues: {
         type: Type.ARRAY,
         items: {
@@ -214675,12 +214868,12 @@ ${checklist}`;
               type: Type.OBJECT,
               properties: {
                 title: { type: Type.STRING },
-                status: { type: Type.STRING, description: "good | warning | issue | unverified" },
+                status: { type: Type.STRING, description: "pass | warning | critical | unverified" },
                 description: { type: Type.STRING },
                 evidence: { type: Type.STRING },
                 recommendation: { type: Type.STRING }
               },
-              required: ["title", "status", "description"]
+              required: ["title", "status", "description", "evidence"]
             }
           },
           seo: {
@@ -214694,7 +214887,7 @@ ${checklist}`;
                 evidence: { type: Type.STRING },
                 recommendation: { type: Type.STRING }
               },
-              required: ["title", "status", "description"]
+              required: ["title", "status", "description", "evidence"]
             }
           },
           performance: {
@@ -214708,7 +214901,7 @@ ${checklist}`;
                 evidence: { type: Type.STRING },
                 recommendation: { type: Type.STRING }
               },
-              required: ["title", "status", "description"]
+              required: ["title", "status", "description", "evidence"]
             }
           },
           accessibility: {
@@ -214722,7 +214915,7 @@ ${checklist}`;
                 evidence: { type: Type.STRING },
                 recommendation: { type: Type.STRING }
               },
-              required: ["title", "status", "description"]
+              required: ["title", "status", "description", "evidence"]
             }
           },
           conversion: {
@@ -214736,7 +214929,7 @@ ${checklist}`;
                 evidence: { type: Type.STRING },
                 recommendation: { type: Type.STRING }
               },
-              required: ["title", "status", "description"]
+              required: ["title", "status", "description", "evidence"]
             }
           }
         },
@@ -214761,168 +214954,92 @@ ${checklist}`;
           type: Type.OBJECT,
           properties: {
             area: { type: Type.STRING },
-            currentObservation: { type: Type.STRING },
-            recommendedRedesign: { type: Type.STRING },
-            expectedImpact: { type: Type.STRING, description: "High Impact | Medium Impact | Visual Polish" }
+            problem: { type: Type.STRING },
+            evidence: { type: Type.STRING },
+            impact: { type: Type.STRING },
+            redesignStrategy: { type: Type.STRING },
+            priority: { type: Type.STRING, description: "High | Medium | Low" }
           },
-          required: ["area", "currentObservation", "recommendedRedesign", "expectedImpact"]
+          required: ["area", "problem", "evidence", "impact", "redesignStrategy", "priority"]
         }
       },
-      limitations: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING }
-      }
+      limitations: { type: Type.ARRAY, items: { type: Type.STRING } }
     },
-    required: [
-      "scores",
-      "summary",
-      "highPriorityIssues",
-      "categoryFindings",
-      "strengths",
-      "redesignOpportunities"
-    ]
+    required: ["summary", "highPriorityIssues", "categoryFindings", "strengths", "redesignOpportunities"]
   };
-  let ai = null;
-  try {
-    ai = getGeminiClient();
-  } catch (err2) {
-    console.warn("[AI Engine] API Key not available or error creating client, falling back to deterministic audit:", err2.message);
-    return generateDeterministicAuditFallback(extractedData, deterministicChecks);
+}
+function generateDeterministicFallback(extractedData, deterministicChecks, scores, scoreBreakdown) {
+  console.log("[AI Engine] Generating deterministic fallback audit.");
+  const highPriorityIssues = [];
+  const failingChecks = deterministicChecks.filter((c4) => c4.status === "critical" || c4.status === "warning").sort((a6, b2) => b2.weight - a6.weight);
+  for (let i6 = 0; i6 < Math.min(failingChecks.length, 5); i6++) {
+    const c4 = failingChecks[i6];
+    highPriorityIssues.push({
+      id: `issue-${i6 + 1}`,
+      title: c4.title,
+      category: c4.category,
+      severity: c4.status === "critical" ? "high" : "medium",
+      problem: c4.message,
+      evidence: c4.evidence,
+      impact: c4.category === "seo" ? "Affects search engine indexing and ranking visibility." : c4.category === "accessibility" ? "Creates barriers for assistive technology users." : c4.category === "performance" ? "Increases page load time and user frustration." : "May reduce visitor engagement and conversion.",
+      recommendation: c4.id === "ssl-https" ? "Migrate to HTTPS with automatic TLS certificate and server-side redirect." : c4.id === "title-presence" ? "Add a descriptive <title> tag of 30-60 characters." : c4.id === "meta-desc-presence" ? "Write a compelling 120-160 character meta description." : c4.id === "h1-presence" ? "Add exactly one clear H1 heading as the primary page topic." : `Address: ${c4.message}`,
+      source: "crawled"
+    });
   }
-  const candidateModels = Array.from(
-    /* @__PURE__ */ new Set([configuredModel, "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.7-flash"])
-  );
-  let responseText = null;
-  let lastAiError = null;
-  for (const model of candidateModels) {
-    try {
-      console.log(`[AI Engine] Attempting audit generation with model: ${model}`);
-      const response = await ai.models.generateContent({
-        model,
-        contents: JSON.stringify(promptPayload),
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema
-        }
-      });
-      if (response.text && response.text.trim().length > 0) {
-        responseText = response.text;
-        console.log(`[AI Engine] Generation successful with model: ${model}`);
-        break;
-      }
-    } catch (err2) {
-      lastAiError = err2;
-      const errMsg = String(err2?.message || err2 || "");
-      console.warn(`[AI Engine] Model ${model} unavailable: ${errMsg.slice(0, 120)}... Failing over to next candidate.`);
-    }
-  }
-  if (!responseText) {
-    console.warn("[AI Engine] All AI models exhausted or unavailable. Activating deterministic audit fallback.");
-    const fallbackAudit = generateDeterministicAuditFallback(extractedData, deterministicChecks);
-    if (lastAiError) {
-      fallbackAudit.limitations.push(
-        "Note: AI reasoning model was temporarily under heavy traffic (503 Service Unavailable). Analysis was generated using verified deterministic DOM inspection."
-      );
-    }
-    return fallbackAudit;
-  }
-  let rawJson;
-  try {
-    rawJson = JSON.parse(responseText);
-  } catch {
-    const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-    try {
-      rawJson = JSON.parse(cleaned);
-    } catch {
-      console.warn("[AI Engine] Failed to parse JSON from AI response, falling back to deterministic audit.");
-      return generateDeterministicAuditFallback(extractedData, deterministicChecks);
-    }
-  }
-  const safeScores = {
-    ux: Math.min(100, Math.max(10, rawJson.scores?.ux ?? 75)),
-    seo: Math.min(100, Math.max(10, rawJson.scores?.seo ?? 70)),
-    performance: Math.min(100, Math.max(10, rawJson.scores?.performance ?? 75)),
-    accessibility: Math.min(100, Math.max(10, rawJson.scores?.accessibility ?? (extractedData.images.altCoveragePercent || 70))),
-    conversion: Math.min(100, Math.max(10, rawJson.scores?.conversion ?? 65)),
-    overall: 0
+  const buildCategoryFindings = (cat) => {
+    return deterministicChecks.filter((c4) => c4.category === cat).map((c4, i6) => ({
+      id: `${cat}-${i6 + 1}`,
+      category: c4.category,
+      title: c4.title,
+      status: c4.status,
+      description: c4.message,
+      evidence: c4.evidence,
+      source: "crawled"
+    }));
   };
-  safeScores.overall = Math.round(
-    safeScores.ux * 0.25 + safeScores.seo * 0.2 + safeScores.performance * 0.2 + safeScores.accessibility * 0.15 + safeScores.conversion * 0.2
-  );
-  const highPriorityIssues = (rawJson.highPriorityIssues || []).map((issue, idx) => ({
-    id: `issue-${idx + 1}`,
-    title: issue.title || "Identified Web Issue",
-    category: ["ux", "seo", "performance", "accessibility", "conversion"].includes(issue.category || "") ? issue.category : "ux",
-    severity: ["high", "medium", "low"].includes(issue.severity || "") ? issue.severity : "high",
-    problem: issue.problem || "Potential website issue detected.",
-    evidence: issue.evidence || "Observed in extracted page code.",
-    impact: issue.impact || "May negatively affect visitor engagement or search rankings.",
-    recommendation: issue.recommendation || "Review and optimize this component."
-  }));
-  const categoryFindings = {
-    ux: (rawJson.categoryFindings?.ux || []).map((f5, i6) => ({
-      id: `ux-${i6 + 1}`,
-      category: "ux",
-      title: f5.title || "UX Finding",
-      status: ["good", "warning", "issue", "unverified"].includes(f5.status || "") ? f5.status : "good",
-      description: f5.description || "",
-      evidence: f5.evidence,
-      recommendation: f5.recommendation
-    })),
-    seo: (rawJson.categoryFindings?.seo || []).map((f5, i6) => ({
-      id: `seo-${i6 + 1}`,
-      category: "seo",
-      title: f5.title || "SEO Finding",
-      status: ["good", "warning", "issue", "unverified"].includes(f5.status || "") ? f5.status : "good",
-      description: f5.description || "",
-      evidence: f5.evidence,
-      recommendation: f5.recommendation
-    })),
-    performance: (rawJson.categoryFindings?.performance || []).map((f5, i6) => ({
-      id: `perf-${i6 + 1}`,
-      category: "performance",
-      title: f5.title || "Performance Signal",
-      status: ["good", "warning", "issue", "unverified"].includes(f5.status || "") ? f5.status : "good",
-      description: f5.description || "",
-      evidence: f5.evidence,
-      recommendation: f5.recommendation
-    })),
-    accessibility: (rawJson.categoryFindings?.accessibility || []).map((f5, i6) => ({
-      id: `a11y-${i6 + 1}`,
-      category: "accessibility",
-      title: f5.title || "Accessibility Finding",
-      status: ["good", "warning", "issue", "unverified"].includes(f5.status || "") ? f5.status : "good",
-      description: f5.description || "",
-      evidence: f5.evidence,
-      recommendation: f5.recommendation
-    })),
-    conversion: (rawJson.categoryFindings?.conversion || []).map((f5, i6) => ({
-      id: `cro-${i6 + 1}`,
-      category: "conversion",
-      title: f5.title || "Conversion Signal",
-      status: ["good", "warning", "issue", "unverified"].includes(f5.status || "") ? f5.status : "good",
-      description: f5.description || "",
-      evidence: f5.evidence,
-      recommendation: f5.recommendation
-    }))
-  };
-  const strengths = (rawJson.strengths || []).map((s6) => ({
-    title: s6.title || "Positive Attribute",
-    category: ["ux", "seo", "performance", "accessibility", "conversion"].includes(s6.category || "") ? s6.category : "ux",
-    description: s6.description || "Meets recommended best practice standards.",
-    evidence: s6.evidence || "Verified through automated extraction."
-  }));
-  const redesignOpportunities = (rawJson.redesignOpportunities || []).map((r5) => ({
-    area: r5.area || "Key Website Section",
-    currentObservation: r5.currentObservation || "Current implementation leaves room for optimization.",
-    recommendedRedesign: r5.recommendedRedesign || "Modernize layout, typography, and call-to-action flow.",
-    expectedImpact: ["High Impact", "Medium Impact", "Visual Polish"].includes(r5.expectedImpact || "") ? r5.expectedImpact : "High Impact"
-  }));
-  const limitations = rawJson.limitations?.length ? rawJson.limitations : [
-    "Automated static analysis evaluates initial HTML markup and server response. Client-side JavaScript rendered apps (SPAs) may have additional dynamic elements.",
-    "Visual aesthetic quality, branding feel, and contrast under varying ambient light require manual human design review.",
-    "Real-world conversion rates depend on traffic intent, copy messaging resonance, and checkout/lead form funnels beyond the homepage."
+  const strengths = [];
+  const passingChecks = deterministicChecks.filter((c4) => c4.status === "pass");
+  for (const c4 of passingChecks) {
+    strengths.push({
+      title: c4.title,
+      category: c4.category,
+      description: c4.message,
+      evidence: c4.evidence,
+      source: "crawled"
+    });
+  }
+  const redesignOpportunities = [
+    {
+      area: "Hero Section & Value Proposition",
+      problem: extractedData.headings.h1[0] ? `Current H1: "${extractedData.headings.h1[0].slice(0, 60)}"` : "No H1 heading to anchor the value proposition.",
+      evidence: `${extractedData.headings.h1Count} H1 tag(s) detected. Body word count: ${extractedData.performanceSignals.approxWordCount}.`,
+      impact: "A weak or missing hero headline reduces immediate clarity of purpose.",
+      redesignStrategy: "Create a bold, benefit-driven H1 with supporting subtitle and primary CTA button above the fold.",
+      priority: "High"
+    },
+    {
+      area: "Mobile Experience",
+      problem: extractedData.hasViewportMeta ? "Viewport is configured but mobile rendering was not tested." : "Viewport meta tag is missing.",
+      evidence: `Viewport: "${extractedData.viewport || "not set"}" | Scripts: ${extractedData.performanceSignals.scriptsCount} | HTML: ${Math.round(extractedData.htmlSizeBytes / 1024)} KB.`,
+      impact: "Mobile visitors may experience layout issues or slow loading.",
+      redesignStrategy: "Test responsive behavior across breakpoints, optimize touch targets to 48px+, and streamline mobile navigation.",
+      priority: "High"
+    },
+    {
+      area: "Conversion Path Optimization",
+      problem: `${extractedData.links.ctaLinks.length} CTA-like links detected. ${extractedData.forms.count} form(s) on page.`,
+      evidence: `CTAs: ${extractedData.links.ctaLinks.slice(0, 3).join(", ") || "none detected"} | Forms: ${extractedData.forms.count}.`,
+      impact: "Unclear or absent primary conversion actions reduce lead capture potential.",
+      redesignStrategy: "Establish a single dominant primary CTA, repeat it at strategic scroll points, and simplify form fields to essentials.",
+      priority: "Medium"
+    }
+  ];
+  const limitations = [
+    "This audit used a static HTML crawler to evaluate initial server-rendered markup.",
+    "Client-side rendered content (SPAs, dynamic loading) may contain additional elements not captured here.",
+    "Visual design quality, color contrast, and interaction behavior require manual review.",
+    "Mobile-specific visual and interaction testing was not performed.",
+    "Performance metrics reflect initial HTML response only \u2014 not full page load with assets."
   ];
   return {
     website: {
@@ -214933,10 +215050,230 @@ ${checklist}`;
       description: extractedData.metaDescription,
       scannedAt: (/* @__PURE__ */ new Date()).toISOString()
     },
-    scores: safeScores,
-    summary: rawJson.summary || `Comprehensive audit completed for ${extractedData.domain}. Analyzed ${extractedData.headings.totalCount} headings, ${extractedData.links.totalCount} links, ${extractedData.images.totalCount} images, and key conversion signals.`,
+    scores,
+    scoreBreakdown,
+    summary: `Audit completed for ${extractedData.domain}. Analyzed ${extractedData.headings.totalCount} headings, ${extractedData.images.totalCount} images, ${extractedData.links.totalCount} links. Server latency: ${extractedData.responseTimeMs}ms. HTML size: ${Math.round(extractedData.htmlSizeBytes / 1024)} KB.`,
     highPriorityIssues,
-    categoryFindings,
+    categoryFindings: {
+      ux: buildCategoryFindings("ux"),
+      seo: buildCategoryFindings("seo"),
+      performance: buildCategoryFindings("performance"),
+      accessibility: buildCategoryFindings("accessibility"),
+      conversion: buildCategoryFindings("conversion")
+    },
+    strengths,
+    redesignOpportunities,
+    deterministicChecks,
+    extractedData,
+    limitations
+  };
+}
+async function generateAuditWithAi(extractedData, deterministicChecks) {
+  const configuredModel = process.env.AI_MODEL || "gemini-3.7-flash";
+  const checklist = loadAuditChecklist();
+  const { scores, breakdown } = calculateScores(deterministicChecks, extractedData);
+  console.log("[Scoring] Deterministic scores calculated:", scores);
+  const promptPayload = {
+    websiteOverview: {
+      url: extractedData.url,
+      finalUrl: extractedData.finalUrl,
+      domain: extractedData.domain,
+      httpStatus: extractedData.httpStatus,
+      measuredResponseTimeMs: extractedData.responseTimeMs,
+      htmlSizeBytes: extractedData.htmlSizeBytes,
+      htmlSizeKB: Math.round(extractedData.htmlSizeBytes / 1024),
+      isHttps: extractedData.isHttps,
+      title: extractedData.title,
+      titleLength: extractedData.title.length,
+      metaDescription: extractedData.metaDescription,
+      metaDescriptionLength: extractedData.metaDescription.length,
+      canonicalUrl: extractedData.canonicalUrl,
+      language: extractedData.language,
+      viewportMeta: extractedData.viewport,
+      robotsMeta: extractedData.robotsMeta
+    },
+    headingsAnalysis: {
+      total: extractedData.headings.totalCount,
+      h1Count: extractedData.headings.h1Count,
+      h1Items: extractedData.headings.h1,
+      h2Count: extractedData.headings.h2.length,
+      h3Count: extractedData.headings.h3.length,
+      sampleH2: extractedData.headings.h2.slice(0, 8),
+      sampleH3: extractedData.headings.h3.slice(0, 8),
+      hasMissingH1: extractedData.headings.hasMissingH1,
+      hasMultipleH1: extractedData.headings.hasMultipleH1
+    },
+    linksAnalysis: {
+      totalCount: extractedData.links.totalCount,
+      internal: extractedData.links.internalCount,
+      external: extractedData.links.externalCount,
+      emptyTextAnchors: extractedData.links.emptyTextCount,
+      emptyButtons: extractedData.links.emptyButtonCount,
+      detectedCtaLinks: extractedData.links.ctaLinks,
+      sampleNavLinks: extractedData.links.sampleLinks.slice(0, 10).map((l2) => l2.text)
+    },
+    imagesAnalysis: {
+      totalImages: extractedData.images.totalCount,
+      withAlt: extractedData.images.withAltCount,
+      missingAltCount: extractedData.images.missingAltCount,
+      altCoveragePercent: extractedData.images.altCoveragePercent,
+      sampleMissingAltSources: extractedData.images.missingAltSamples.slice(0, 5)
+    },
+    semanticsAndAccessibility: {
+      semanticTagsPresent: extractedData.semantics.tagsFound,
+      hasMain: extractedData.semantics.hasMain,
+      hasNav: extractedData.semantics.hasNav,
+      hasHeader: extractedData.semantics.hasHeader,
+      hasFooter: extractedData.semantics.hasFooter,
+      formsCount: extractedData.forms.count,
+      totalInputs: extractedData.forms.totalInputs,
+      inputsWithoutLabels: extractedData.forms.inputsWithoutLabels,
+      hasInputsWithoutLabels: extractedData.forms.hasInputsWithoutLabels
+    },
+    performanceSignals: {
+      scriptsCount: extractedData.performanceSignals.scriptsCount,
+      stylesheetsCount: extractedData.performanceSignals.stylesheetsCount,
+      inlineStylesCount: extractedData.performanceSignals.inlineStyleCount,
+      approximateWordCount: extractedData.performanceSignals.approxWordCount,
+      measuredLatencyMs: extractedData.responseTimeMs
+    },
+    socialMetadata: extractedData.socialMeta,
+    preCalculatedDeterministicChecks: deterministicChecks.map((c4) => ({
+      check: c4.title,
+      category: c4.category,
+      status: c4.status,
+      message: c4.message,
+      evidence: c4.evidence,
+      weight: c4.weight
+    })),
+    bodyTextExcerpt: extractedData.bodySnippet.slice(0, 2800)
+  };
+  const systemInstruction = buildSystemPrompt(checklist);
+  let ai = null;
+  try {
+    ai = getGeminiClient();
+  } catch (err2) {
+    console.warn("[AI Engine] API Key not available, using deterministic fallback:", err2.message);
+    return generateDeterministicFallback(extractedData, deterministicChecks, scores, breakdown);
+  }
+  const candidateModels = Array.from(
+    /* @__PURE__ */ new Set([configuredModel, "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"])
+  );
+  let responseText = null;
+  let lastAiError = null;
+  for (const model of candidateModels) {
+    try {
+      console.log(`[AI Engine] Attempting with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model,
+        contents: JSON.stringify(promptPayload),
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: getResponseSchema()
+        }
+      });
+      if (response.text && response.text.trim().length > 0) {
+        responseText = response.text;
+        console.log(`[AI Engine] Success with model: ${model}`);
+        break;
+      }
+    } catch (err2) {
+      lastAiError = err2;
+      console.warn(`[AI Engine] Model ${model} failed: ${String(err2?.message || "").slice(0, 120)}`);
+    }
+  }
+  if (!responseText) {
+    console.warn("[AI Engine] All models exhausted. Using deterministic fallback.");
+    const fallback = generateDeterministicFallback(extractedData, deterministicChecks, scores, breakdown);
+    if (lastAiError) {
+      fallback.limitations.push(
+        "AI analysis service was temporarily unavailable. Results are based on verified deterministic checks only."
+      );
+    }
+    return fallback;
+  }
+  let rawJson;
+  try {
+    rawJson = JSON.parse(responseText);
+  } catch {
+    const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+    try {
+      rawJson = JSON.parse(cleaned);
+    } catch {
+      console.warn("[AI Engine] Failed to parse AI JSON, using deterministic fallback.");
+      return generateDeterministicFallback(extractedData, deterministicChecks, scores, breakdown);
+    }
+  }
+  const VALID_CATEGORIES = ["ux", "seo", "performance", "accessibility", "conversion"];
+  const VALID_STATUSES = ["pass", "warning", "critical", "unverified"];
+  const highPriorityIssues = (rawJson.highPriorityIssues || []).slice(0, 6).map((issue, idx) => ({
+    id: `issue-${idx + 1}`,
+    title: issue.title || "Identified Issue",
+    category: VALID_CATEGORIES.includes(issue.category || "") ? issue.category : "ux",
+    severity: ["high", "medium", "low"].includes(issue.severity || "") ? issue.severity : "medium",
+    problem: issue.problem || "",
+    evidence: issue.evidence || "Observed in page analysis.",
+    impact: issue.impact || "",
+    recommendation: issue.recommendation || "",
+    source: "ai-analysis"
+  }));
+  const mapFindings = (items, prefix) => {
+    return (items || []).map((f5, i6) => ({
+      id: `${prefix}-${i6 + 1}`,
+      category: prefix,
+      title: f5.title || `${prefix} finding`,
+      status: VALID_STATUSES.includes(f5.status || "") ? f5.status : "unverified",
+      description: f5.description || "",
+      evidence: f5.evidence || "",
+      recommendation: f5.recommendation,
+      source: "ai-analysis"
+    }));
+  };
+  const strengths = (rawJson.strengths || []).map((s6) => ({
+    title: s6.title || "Positive Attribute",
+    category: VALID_CATEGORIES.includes(s6.category || "") ? s6.category : "ux",
+    description: s6.description || "",
+    evidence: s6.evidence || "Verified through automated extraction.",
+    source: "crawled"
+  }));
+  const redesignOpportunities = (rawJson.redesignOpportunities || []).map((r5) => ({
+    area: r5.area || "Website Area",
+    problem: r5.problem || "",
+    evidence: r5.evidence || "",
+    impact: r5.impact || "",
+    redesignStrategy: r5.redesignStrategy || "",
+    priority: ["High", "Medium", "Low"].includes(r5.priority || "") ? r5.priority : "Medium"
+  }));
+  const limitations = [
+    "This audit uses a static HTML crawler \u2014 client-rendered content may not be captured.",
+    "Mobile visual rendering and interaction behavior were not directly tested.",
+    "Accessibility evaluation covers automated checks only and does not replace manual keyboard/screen-reader testing.",
+    "Performance metrics reflect initial server response, not full page lifecycle.",
+    "Business outcomes (conversion rates, bounce rates) depend on many factors beyond website design.",
+    ...rawJson.limitations || []
+  ];
+  return {
+    website: {
+      url: extractedData.url,
+      finalUrl: extractedData.finalUrl,
+      domain: extractedData.domain,
+      title: extractedData.title || extractedData.domain,
+      description: extractedData.metaDescription,
+      scannedAt: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    // Scores are ALWAYS from deterministic calculation — AI cannot override
+    scores,
+    scoreBreakdown: breakdown,
+    summary: rawJson.summary || `Audit completed for ${extractedData.domain}. Analyzed ${extractedData.headings.totalCount} headings, ${extractedData.images.totalCount} images, ${extractedData.links.totalCount} links.`,
+    highPriorityIssues,
+    categoryFindings: {
+      ux: mapFindings(rawJson.categoryFindings?.ux, "ux"),
+      seo: mapFindings(rawJson.categoryFindings?.seo, "seo"),
+      performance: mapFindings(rawJson.categoryFindings?.performance, "perf"),
+      accessibility: mapFindings(rawJson.categoryFindings?.accessibility, "a11y"),
+      conversion: mapFindings(rawJson.categoryFindings?.conversion, "cro")
+    },
     strengths,
     redesignOpportunities,
     deterministicChecks,
@@ -215066,298 +215403,6 @@ async function crawlWebsite(targetUrl) {
     }
     throw error3;
   }
-}
-
-// server/deterministicChecks.ts
-function runDeterministicChecks(data2) {
-  const checks = [];
-  if (data2.isHttps) {
-    checks.push({
-      id: "ssl-https",
-      category: "seo",
-      title: "HTTPS & SSL Security",
-      status: "good",
-      message: "Website serves traffic over encrypted HTTPS connection.",
-      importance: "critical"
-    });
-  } else {
-    checks.push({
-      id: "ssl-https",
-      category: "seo",
-      title: "HTTPS & SSL Security",
-      status: "issue",
-      message: "Website is served over unencrypted HTTP protocol. Modern browsers flag this as insecure.",
-      importance: "critical"
-    });
-  }
-  if (!data2.title) {
-    checks.push({
-      id: "page-title",
-      category: "seo",
-      title: "Page Title Tag",
-      status: "issue",
-      message: "Missing `<title>` tag. Search engines and browsers rely on page titles for indexing and tabs.",
-      importance: "critical"
-    });
-  } else if (data2.title.length < 15) {
-    checks.push({
-      id: "page-title",
-      category: "seo",
-      title: "Page Title Tag",
-      status: "warning",
-      message: `Title tag is very short (${data2.title.length} chars: "${data2.title}"). Recommended length is 30\u201360 characters.`,
-      metric: `${data2.title.length} chars`,
-      importance: "recommended"
-    });
-  } else if (data2.title.length > 70) {
-    checks.push({
-      id: "page-title",
-      category: "seo",
-      title: "Page Title Tag",
-      status: "warning",
-      message: `Title tag exceeds 70 characters (${data2.title.length} chars). Search results may truncate it in SERP.`,
-      metric: `${data2.title.length} chars`,
-      importance: "recommended"
-    });
-  } else {
-    checks.push({
-      id: "page-title",
-      category: "seo",
-      title: "Page Title Tag",
-      status: "good",
-      message: `Title tag is well-proportioned (${data2.title.length} chars).`,
-      metric: `${data2.title.length} chars`,
-      importance: "recommended"
-    });
-  }
-  if (!data2.metaDescription) {
-    checks.push({
-      id: "meta-description",
-      category: "seo",
-      title: "Meta Description",
-      status: "issue",
-      message: "Missing meta description tag. Search snippets will default to arbitrary page text.",
-      importance: "recommended"
-    });
-  } else if (data2.metaDescription.length < 50) {
-    checks.push({
-      id: "meta-description",
-      category: "seo",
-      title: "Meta Description",
-      status: "warning",
-      message: `Meta description is short (${data2.metaDescription.length} chars). Aim for 120\u2013160 characters to maximize click-through rate.`,
-      metric: `${data2.metaDescription.length} chars`,
-      importance: "recommended"
-    });
-  } else {
-    checks.push({
-      id: "meta-description",
-      category: "seo",
-      title: "Meta Description",
-      status: "good",
-      message: `Meta description is present (${data2.metaDescription.length} chars).`,
-      metric: `${data2.metaDescription.length} chars`,
-      importance: "recommended"
-    });
-  }
-  if (data2.headings.h1Count === 0) {
-    checks.push({
-      id: "h1-heading",
-      category: "seo",
-      title: "H1 Primary Heading",
-      status: "issue",
-      message: "No `<h1>` heading found on the page. Exactly one descriptive H1 is recommended for page theme clarity.",
-      importance: "critical"
-    });
-  } else if (data2.headings.h1Count > 1) {
-    checks.push({
-      id: "h1-heading",
-      category: "seo",
-      title: "H1 Primary Heading",
-      status: "warning",
-      message: `Found ${data2.headings.h1Count} \`<h1>\` headings. Best practice is a single primary H1 heading per document.`,
-      metric: `${data2.headings.h1Count} H1 tags`,
-      importance: "recommended"
-    });
-  } else {
-    checks.push({
-      id: "h1-heading",
-      category: "seo",
-      title: "H1 Primary Heading",
-      status: "good",
-      message: "Proper single `<h1>` heading structure found.",
-      metric: data2.headings.h1[0]?.slice(0, 45) + (data2.headings.h1[0]?.length > 45 ? "..." : ""),
-      importance: "recommended"
-    });
-  }
-  if (data2.images.totalCount === 0) {
-    checks.push({
-      id: "image-alt-tags",
-      category: "accessibility",
-      title: "Image Alt Attributes",
-      status: "unverified",
-      message: "No `<img>` tags found in parsed HTML.",
-      importance: "optional"
-    });
-  } else if (data2.images.missingAltCount === 0) {
-    checks.push({
-      id: "image-alt-tags",
-      category: "accessibility",
-      title: "Image Alt Attributes",
-      status: "good",
-      message: `All ${data2.images.totalCount} detected images include descriptive 'alt' attributes.`,
-      metric: "100% covered",
-      importance: "critical"
-    });
-  } else if (data2.images.altCoveragePercent >= 70) {
-    checks.push({
-      id: "image-alt-tags",
-      category: "accessibility",
-      title: "Image Alt Attributes",
-      status: "warning",
-      message: `${data2.images.missingAltCount} out of ${data2.images.totalCount} images are missing 'alt' attributes (${data2.images.altCoveragePercent}% coverage).`,
-      metric: `${data2.images.altCoveragePercent}% covered`,
-      importance: "critical"
-    });
-  } else {
-    checks.push({
-      id: "image-alt-tags",
-      category: "accessibility",
-      title: "Image Alt Attributes",
-      status: "issue",
-      message: `Critical accessibility barrier: ${data2.images.missingAltCount} out of ${data2.images.totalCount} images lack 'alt' text (${data2.images.altCoveragePercent}% coverage).`,
-      metric: `${data2.images.missingAltCount} missing`,
-      importance: "critical"
-    });
-  }
-  if (data2.hasViewportMeta) {
-    const hasUnfriendlyZoom = data2.viewport.includes("user-scalable=no") || data2.viewport.includes("maximum-scale=1");
-    if (hasUnfriendlyZoom) {
-      checks.push({
-        id: "viewport-meta",
-        category: "accessibility",
-        title: "Mobile Viewport & Zoom",
-        status: "warning",
-        message: "Viewport tag restricts user pinch-to-zoom (user-scalable=no/maximum-scale=1), reducing accessibility for visually impaired users.",
-        importance: "recommended"
-      });
-    } else {
-      checks.push({
-        id: "viewport-meta",
-        category: "ux",
-        title: "Mobile Responsive Viewport",
-        status: "good",
-        message: "Responsive viewport meta tag is properly configured.",
-        metric: "Configured",
-        importance: "critical"
-      });
-    }
-  } else {
-    checks.push({
-      id: "viewport-meta",
-      category: "ux",
-      title: "Mobile Responsive Viewport",
-      status: "issue",
-      message: 'Missing `<meta name="viewport">` tag. The site will render as desktop scale on mobile devices.',
-      importance: "critical"
-    });
-  }
-  const keyLandmarksCount = (data2.semantics.hasHeader ? 1 : 0) + (data2.semantics.hasNav ? 1 : 0) + (data2.semantics.hasMain ? 1 : 0) + (data2.semantics.hasFooter ? 1 : 0);
-  if (keyLandmarksCount >= 3) {
-    checks.push({
-      id: "semantic-landmarks",
-      category: "accessibility",
-      title: "Semantic HTML Landmarks",
-      status: "good",
-      message: `Proper document outline with semantic tags (${data2.semantics.tagsFound.join(", ")}).`,
-      metric: `${data2.semantics.totalLandmarks} tags detected`,
-      importance: "recommended"
-    });
-  } else if (keyLandmarksCount >= 1) {
-    checks.push({
-      id: "semantic-landmarks",
-      category: "accessibility",
-      title: "Semantic HTML Landmarks",
-      status: "warning",
-      message: `Limited semantic landmarks detected (${data2.semantics.tagsFound.join(", ")}). Consider using <main>, <nav>, and <footer> for accessible assistive navigation.`,
-      importance: "recommended"
-    });
-  } else {
-    checks.push({
-      id: "semantic-landmarks",
-      category: "accessibility",
-      title: "Semantic HTML Landmarks",
-      status: "issue",
-      message: "No standard HTML5 semantic landmarks (<header>, <nav>, <main>, <footer>) detected. Page appears built with unsemantic div containers.",
-      importance: "recommended"
-    });
-  }
-  if (data2.responseTimeMs < 450) {
-    checks.push({
-      id: "response-latency",
-      category: "performance",
-      title: "Server Latency (TTFB)",
-      status: "good",
-      message: `Fast initial HTML server response time (${data2.responseTimeMs}ms).`,
-      metric: `${data2.responseTimeMs}ms`,
-      importance: "recommended"
-    });
-  } else if (data2.responseTimeMs < 1200) {
-    checks.push({
-      id: "response-latency",
-      category: "performance",
-      title: "Server Latency (TTFB)",
-      status: "warning",
-      message: `Moderate server latency (${data2.responseTimeMs}ms). Initial HTML delivery could be optimized with edge caching or CDN.`,
-      metric: `${data2.responseTimeMs}ms`,
-      importance: "recommended"
-    });
-  } else {
-    checks.push({
-      id: "response-latency",
-      category: "performance",
-      title: "Server Latency (TTFB)",
-      status: "issue",
-      message: `Slow server response time (${data2.responseTimeMs}ms). Exceeds the 1000ms threshold recommended for smooth user experience.`,
-      metric: `${data2.responseTimeMs}ms`,
-      importance: "recommended"
-    });
-  }
-  if (data2.socialMeta.hasOgComplete) {
-    checks.push({
-      id: "social-meta",
-      category: "conversion",
-      title: "Open Graph Social Cards",
-      status: "good",
-      message: "Complete Open Graph metadata configured (og:title, og:description, og:image).",
-      importance: "optional"
-    });
-  } else {
-    checks.push({
-      id: "social-meta",
-      category: "conversion",
-      title: "Open Graph Social Cards",
-      status: "warning",
-      message: `Incomplete social share metadata. Missing: ${[
-        !data2.socialMeta.ogTitle && "og:title",
-        !data2.socialMeta.ogDescription && "og:description",
-        !data2.socialMeta.ogImage && "og:image"
-      ].filter(Boolean).join(", ")}. Shares on Twitter/LinkedIn will lack rich previews.`,
-      importance: "optional"
-    });
-  }
-  if (data2.links.emptyTextCount > 0) {
-    checks.push({
-      id: "empty-links",
-      category: "accessibility",
-      title: "Accessible Link Text",
-      status: "warning",
-      message: `Found ${data2.links.emptyTextCount} link(s) without visible text or aria-label. Screen readers cannot describe these navigation targets.`,
-      metric: `${data2.links.emptyTextCount} empty`,
-      importance: "recommended"
-    });
-  }
-  return checks;
 }
 
 // node_modules/cheerio/dist/esm/options.js
@@ -229820,7 +229865,15 @@ var CTA_KEYWORDS = [
   "explore pricing",
   "learn more",
   "get in touch",
-  "start now"
+  "start now",
+  "hire us",
+  "let's talk",
+  "request a quote",
+  "get a quote",
+  "book now",
+  "enroll now",
+  "download",
+  "apply now"
 ];
 function parseHtml(crawlData, initialUrl) {
   const { html: html3, status: status2, finalUrl, responseTimeMs, contentLength } = crawlData;
@@ -229835,6 +229888,8 @@ function parseHtml(crawlData, initialUrl) {
   const viewport = ($4('meta[name="viewport"]').attr("content") || "").trim();
   const hasViewportMeta = viewport.length > 0;
   const isHttps = finalUrl.startsWith("https://");
+  const robotsMeta = ($4('meta[name="robots"]').attr("content") || "").trim();
+  const hasRobotsMeta = robotsMeta.length > 0;
   const h1List = [];
   const h2List = [];
   const h3List = [];
@@ -229870,6 +229925,7 @@ function parseHtml(crawlData, initialUrl) {
   let internalCount = 0;
   let externalCount = 0;
   let emptyTextCount = 0;
+  let emptyButtonCount = 0;
   const ctaLinks = [];
   const sampleLinks = [];
   $4("a").each((_3, el) => {
@@ -229877,7 +229933,7 @@ function parseHtml(crawlData, initialUrl) {
     const text3 = $4(el).text().replace(/\s+/g, " ").trim();
     const ariaLabel = ($4(el).attr("aria-label") || "").trim();
     const visibleOrAccessibleText = text3 || ariaLabel;
-    if (!visibleOrAccessibleText && href) {
+    if (!visibleOrAccessibleText && href && !href.startsWith("#")) {
       emptyTextCount++;
     }
     let isExternal2 = false;
@@ -229909,6 +229965,14 @@ function parseHtml(crawlData, initialUrl) {
         isCtaLike: isCta,
         hasText: !!visibleOrAccessibleText
       });
+    }
+  });
+  $4("button").each((_3, el) => {
+    const text3 = $4(el).text().replace(/\s+/g, " ").trim();
+    const ariaLabel = ($4(el).attr("aria-label") || "").trim();
+    const title2 = ($4(el).attr("title") || "").trim();
+    if (!text3 && !ariaLabel && !title2) {
+      emptyButtonCount++;
     }
   });
   let withAltCount = 0;
@@ -229965,19 +230029,21 @@ function parseHtml(crawlData, initialUrl) {
   const scriptsCount = $4("script").length;
   const stylesheetsCount = $4('link[rel="stylesheet"]').length;
   const inlineStyleCount = $4("style, [style]").length;
-  let inputsWithoutLabels = false;
+  let inputsWithoutLabelsCount = 0;
+  let totalInputCount = 0;
   const sampleFormActions = [];
   $4("form").each((_3, formEl) => {
     const action = $4(formEl).attr("action") || "[inline / js handled]";
     sampleFormActions.push(action);
     const inputs = $4(formEl).find('input:not([type="hidden"]):not([type="submit"]):not([type="button"])');
     inputs.each((_4, inputEl) => {
+      totalInputCount++;
       const id3 = $4(inputEl).attr("id");
       const ariaLabel = $4(inputEl).attr("aria-label");
       const placeholder = $4(inputEl).attr("placeholder");
       const hasLabel = id3 ? $4(`label[for="${id3}"]`).length > 0 : false;
       if (!hasLabel && !ariaLabel && !placeholder) {
-        inputsWithoutLabels = true;
+        inputsWithoutLabelsCount++;
       }
     });
   });
@@ -230015,6 +230081,7 @@ function parseHtml(crawlData, initialUrl) {
       internalCount,
       externalCount,
       emptyTextCount,
+      emptyButtonCount,
       ctaLinks,
       sampleLinks
     },
@@ -230056,9 +230123,13 @@ function parseHtml(crawlData, initialUrl) {
     },
     forms: {
       count: $4("form").length,
-      hasInputsWithoutLabels: inputsWithoutLabels,
-      sampleFormActions
+      hasInputsWithoutLabels: inputsWithoutLabelsCount > 0,
+      sampleFormActions,
+      totalInputs: totalInputCount,
+      inputsWithoutLabels: inputsWithoutLabelsCount
     },
+    robotsMeta,
+    hasRobotsMeta,
     bodySnippet
   };
 }
@@ -230068,7 +230139,7 @@ var import_fs8 = __toESM(require("fs"), 1);
 import_dotenv.default.config();
 async function startServer2() {
   const app = (0, import_express.default)();
-  const PORT = process.env.PORT || 3e3;
+  const PORT = parseInt(process.env.PORT || "3000", 10);
   const HOST = process.env.HOST || "::";
   app.use(import_express.default.json({ limit: "2mb" }));
   app.get("/api/health", (req2, res) => {
