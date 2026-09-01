@@ -7,6 +7,7 @@ import type {
   CategoryFinding,
   DeterministicCheck,
   ExtractedWebsiteData,
+  FindingStatus,
   HighPriorityIssue,
   RedesignOpportunity,
   StrengthItem,
@@ -297,10 +298,15 @@ function generateDeterministicFallback(
       }));
   };
 
-  // Strengths from passing checks
+  // Strengths from passing checks — exclude TTFB when not excellent
   const strengths: StrengthItem[] = [];
   const passingChecks = deterministicChecks.filter((c) => c.status === 'pass');
   for (const c of passingChecks) {
+    // Skip TTFB as a strength if response time is not excellent (<300ms)
+    const titleLower = c.title.toLowerCase();
+    if ((titleLower.includes('ttfb') || titleLower.includes('server latency')) && extractedData.responseTimeMs >= 300) {
+      continue;
+    }
     strengths.push({
       title: c.title,
       category: c.category,
@@ -569,6 +575,18 @@ export async function generateAuditWithAi(
   const VALID_CATEGORIES = ['ux', 'seo', 'performance', 'accessibility', 'conversion'];
   const VALID_STATUSES = ['pass', 'warning', 'critical', 'unverified'];
 
+  // Safe status normalizer: handles uppercase/mixed case from AI
+  const normalizeStatus = (raw: string | undefined): FindingStatus => {
+    const lower = (raw || '').toLowerCase().trim();
+    if (VALID_STATUSES.includes(lower)) return lower as FindingStatus;
+    return 'unverified';
+  };
+
+  // Build a set of deterministic check titles to prevent AI duplicates
+  const deterministicTitles = new Set(
+    deterministicChecks.map((c) => c.title.toLowerCase().trim())
+  );
+
   const highPriorityIssues: HighPriorityIssue[] = (rawJson.highPriorityIssues || []).slice(0, 6).map((issue, idx) => ({
     id: `issue-${idx + 1}`,
     title: issue.title || 'Identified Issue',
@@ -582,34 +600,56 @@ export async function generateAuditWithAi(
   }));
 
   const mapFindings = (items: Array<Record<string, any>> | undefined, prefix: string): CategoryFinding[] => {
-    return (items || []).map((f, i) => ({
+    return (items || []).filter((f) => {
+      // Skip AI findings that duplicate an existing deterministic check
+      const title = (f.title || '').toLowerCase().trim();
+      return !deterministicTitles.has(title);
+    }).map((f, i) => ({
       id: `${prefix}-${i + 1}`,
       category: prefix as any,
       title: f.title || `${prefix} finding`,
-      status: VALID_STATUSES.includes(f.status || '') ? f.status : 'unverified',
+      status: normalizeStatus(f.status),
       description: f.description || '',
       evidence: f.evidence || '',
       recommendation: f.recommendation,
-      source: 'ai-analysis',
+      source: 'ai-analysis' as const,
     }));
   };
 
-  const strengths: StrengthItem[] = (rawJson.strengths || []).map((s) => ({
-    title: s.title || 'Positive Attribute',
-    category: VALID_CATEGORIES.includes(s.category || '') ? (s.category as any) : 'ux',
-    description: s.description || '',
-    evidence: s.evidence || 'Observed during automated crawl.',
-    source: 'ai-analysis' as const,
-  }));
+  // Build verified check titles for strengths deduplication
+  const passingCheckTitles = new Set(
+    deterministicChecks.filter((c) => c.status === 'pass').map((c) => c.title.toLowerCase().trim())
+  );
+
+  const strengths: StrengthItem[] = (rawJson.strengths || []).map((s) => {
+    const title = s.title || 'Positive Attribute';
+    // If this strength matches a passing deterministic check, mark as crawled/verified
+    const isVerified = passingCheckTitles.has(title.toLowerCase().trim());
+    return {
+      title,
+      category: VALID_CATEGORIES.includes(s.category || '') ? (s.category as any) : 'ux',
+      description: s.description || '',
+      evidence: s.evidence || 'Observed during automated crawl.',
+      source: (isVerified ? 'crawled' : 'ai-analysis') as 'crawled' | 'ai-analysis',
+    };
+  }).filter((s) => {
+    // Filter out TTFB-related strengths that may claim "rapid" or "fast" for moderate times
+    const title = s.title.toLowerCase();
+    if ((title.includes('ttfb') || title.includes('server') || title.includes('latency') || title.includes('response')) &&
+        extractedData.responseTimeMs >= 300) {
+      return false; // Don't show TTFB as a strength if it's not excellent
+    }
+    return true;
+  });
 
   const redesignOpportunities: RedesignOpportunity[] = (rawJson.redesignOpportunities || []).map((r) => ({
     area: r.area || 'Website Area',
-    problem: r.problem || '',
-    evidence: r.evidence || '',
-    impact: r.impact || '',
-    redesignStrategy: r.redesignStrategy || '',
+    problem: r.problem || 'No problem description provided by AI.',
+    evidence: r.evidence || 'Evidence not supplied.',
+    impact: r.impact || 'Impact assessment not available.',
+    redesignStrategy: r.redesignStrategy || 'Consider reviewing this area during a design sprint.',
     priority: (['High', 'Medium', 'Low'].includes(r.priority || '') ? r.priority : 'Medium') as any,
-    confidence: 'INFERRED' as const,
+    confidence: ((r as any).confidence === 'VERIFIED' ? 'VERIFIED' : (r as any).confidence === 'UNVERIFIED' ? 'UNVERIFIED' : 'INFERRED') as 'VERIFIED' | 'INFERRED' | 'UNVERIFIED',
   }));
 
   const limitations = [

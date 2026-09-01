@@ -2,7 +2,7 @@ export type IssueSeverity = 'high' | 'medium' | 'low';
 export type FindingCategory = 'ux' | 'seo' | 'performance' | 'accessibility' | 'conversion';
 export type FindingStatus = 'pass' | 'warning' | 'critical' | 'unverified';
 export type FindingSource = 'crawled' | 'ai-analysis' | 'inferred' | 'unverified';
-export type ScoreGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'C-' | 'D' | 'F';
+export type ScoreGrade = 'A' | 'B' | 'C' | 'D' | 'F';
 
 export interface HeadingItem {
   tag: 'h1' | 'h2' | 'h3';

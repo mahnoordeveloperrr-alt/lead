@@ -19,17 +19,12 @@ const CATEGORY_WEIGHTS: Record<FindingCategory, number> = {
   conversion: 0.18,
 };
 
-function gradeFromScore(score: number): ScoreGrade {
-  if (score >= 97) return 'A+';
-  if (score >= 93) return 'A';
-  if (score >= 90) return 'A-';
-  if (score >= 87) return 'B+';
-  if (score >= 83) return 'B';
-  if (score >= 80) return 'B-';
-  if (score >= 77) return 'C+';
-  if (score >= 73) return 'C';
-  if (score >= 70) return 'C-';
-  if (score >= 60) return 'D';
+export function gradeFromScore(score: number): ScoreGrade {
+  const safe = typeof score === 'number' && !isNaN(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
+  if (safe >= 90) return 'A';
+  if (safe >= 80) return 'B';
+  if (safe >= 70) return 'C';
+  if (safe >= 60) return 'D';
   return 'F';
 }
 
@@ -395,15 +390,27 @@ export function runDeterministicChecks(data: ExtractedWebsiteData): Deterministi
     });
   }
 
-  // 18. TTFB
-  if (data.responseTimeMs < 300) {
+  // 18. TTFB — Thresholds: <200ms Excellent, 200-500ms Good, 500-800ms Moderate, >800ms Poor
+  if (data.responseTimeMs < 200) {
     checks.push({
       id: 'ttfb',
       category: 'performance',
       title: 'Server Latency (TTFB)',
       status: 'pass',
-      message: `Fast server response in ${data.responseTimeMs}ms.`,
-      evidence: `TTFB: ${data.responseTimeMs}ms (target: under 300ms)`,
+      message: `Excellent server response at ${data.responseTimeMs}ms.`,
+      evidence: `TTFB: ${data.responseTimeMs}ms (target: under 200ms)`,
+      source: 'crawled',
+      importance: 'recommended',
+      weight: 8,
+    });
+  } else if (data.responseTimeMs < 500) {
+    checks.push({
+      id: 'ttfb',
+      category: 'performance',
+      title: 'Server Latency (TTFB)',
+      status: 'pass',
+      message: `Good server response at ${data.responseTimeMs}ms.`,
+      evidence: `TTFB: ${data.responseTimeMs}ms (target: under 200ms, acceptable under 500ms)`,
       source: 'crawled',
       importance: 'recommended',
       weight: 8,
@@ -415,7 +422,7 @@ export function runDeterministicChecks(data: ExtractedWebsiteData): Deterministi
       title: 'Server Latency (TTFB)',
       status: 'warning',
       message: `Moderate server latency at ${data.responseTimeMs}ms. Could benefit from edge caching or CDN.`,
-      evidence: `TTFB: ${data.responseTimeMs}ms (target: under 300ms)`,
+      evidence: `TTFB: ${data.responseTimeMs}ms (target: under 200ms)`,
       source: 'crawled',
       importance: 'recommended',
       weight: 8,
@@ -620,10 +627,10 @@ export function calculateScores(checks: DeterministicCheck[], data: ExtractedWeb
       }
     }
 
-    // If no checks exist for a category, default to 75 (neutral estimate)
+    // If no checks exist for a category, default to 50 (neutral — no evidence either way)
     const score = maxPossible > 0
-      ? Math.round(Math.min(100, Math.max(10, (rawScore / maxPossible) * 100)))
-      : 75;
+      ? Math.round(Math.min(100, Math.max(0, (rawScore / maxPossible) * 100)))
+      : 50;
 
     breakdown.push({
       category: cat,
@@ -648,26 +655,24 @@ export function calculateScores(checks: DeterministicCheck[], data: ExtractedWeb
     ? Math.round(Math.min(100, Math.max(10, overallWeighted / totalWeight)))
     : 75;
 
-  const scores: AuditScores = {
-    ux: breakdown.find((b) => b.category === 'ux')?.rawScore !== undefined
-      ? Math.round((breakdown.find((b) => b.category === 'ux')!.rawScore / Math.max(breakdown.find((b) => b.category === 'ux')!.maxPossible, 1)) * 100) || 75
-      : 75,
-    seo: Math.round((breakdown.find((b) => b.category === 'seo')!.rawScore / Math.max(breakdown.find((b) => b.category === 'seo')!.maxPossible, 1)) * 100) || 75,
-    performance: Math.round((breakdown.find((b) => b.category === 'performance')!.rawScore / Math.max(breakdown.find((b) => b.category === 'performance')!.maxPossible, 1)) * 100) || 75,
-    accessibility: Math.round((breakdown.find((b) => b.category === 'accessibility')!.rawScore / Math.max(breakdown.find((b) => b.category === 'accessibility')!.maxPossible, 1)) * 100) || 75,
-    conversion: Math.round((breakdown.find((b) => b.category === 'conversion')!.rawScore / Math.max(breakdown.find((b) => b.category === 'conversion')!.maxPossible, 1)) * 100) || 75,
-    overall,
-    grade: gradeFromScore(overall),
+  // Helper: safely compute category score from breakdown
+  const catScore = (cat: FindingCategory): number => {
+    const b = breakdown.find((x) => x.category === cat);
+    if (!b || b.maxPossible <= 0) return 50;
+    return Math.round((b.rawScore / b.maxPossible) * 100);
   };
 
-  // Clamp all scores
-  scores.ux = Math.min(100, Math.max(10, scores.ux));
-  scores.seo = Math.min(100, Math.max(10, scores.seo));
-  scores.performance = Math.min(100, Math.max(10, scores.performance));
-  scores.accessibility = Math.min(100, Math.max(10, scores.accessibility));
-  scores.conversion = Math.min(100, Math.max(10, scores.conversion));
+  const scores: AuditScores = {
+    ux: Math.min(100, Math.max(0, catScore('ux'))),
+    seo: Math.min(100, Math.max(0, catScore('seo'))),
+    performance: Math.min(100, Math.max(0, catScore('performance'))),
+    accessibility: Math.min(100, Math.max(0, catScore('accessibility'))),
+    conversion: Math.min(100, Math.max(0, catScore('conversion'))),
+    overall: 0,
+    grade: 'F',
+  };
 
-  // Recalculate overall with clamped scores
+  // Calculate overall from clamped category scores
   scores.overall = Math.round(
     scores.ux * 0.22 +
     scores.seo * 0.22 +

@@ -15,7 +15,7 @@ import {
   ChevronUp,
   Info,
 } from 'lucide-react';
-import type { AuditResult, FindingCategory, ScoreBreakdown, ScoreGrade } from '../types/audit.js';
+import type { AuditResult, FindingCategory, ScoreBreakdown } from '../types/audit.js';
 
 interface ScoreOverviewProps {
   auditResult: AuditResult;
@@ -25,18 +25,16 @@ interface ScoreOverviewProps {
   onOpenShareModal: () => void;
 }
 
-function getScoreBadge(score: number, grade?: ScoreGrade): {
+function getScoreBadge(score: number): {
   textColor: string;
   barColor: string;
   badgeClass: string;
-  gradeLabel: string;
 } {
   if (score >= 90) {
     return {
       textColor: 'text-emerald-400',
       barColor: 'bg-emerald-500',
       badgeClass: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-      gradeLabel: grade || 'A',
     };
   }
   if (score >= 80) {
@@ -44,7 +42,6 @@ function getScoreBadge(score: number, grade?: ScoreGrade): {
       textColor: 'text-zinc-200',
       barColor: 'bg-zinc-300',
       badgeClass: 'bg-zinc-800 text-zinc-300 border border-zinc-700',
-      gradeLabel: grade || 'B',
     };
   }
   if (score >= 65) {
@@ -52,14 +49,12 @@ function getScoreBadge(score: number, grade?: ScoreGrade): {
       textColor: 'text-orange-400',
       barColor: 'bg-orange-500',
       badgeClass: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
-      gradeLabel: grade || 'C',
     };
   }
   return {
     textColor: 'text-red-400',
     barColor: 'bg-red-500',
     badgeClass: 'bg-red-500/20 text-red-400 border border-red-500/30',
-    gradeLabel: grade || 'D',
   };
 }
 
@@ -71,13 +66,14 @@ export const ScoreOverview: React.FC<ScoreOverviewProps> = ({
   onOpenShareModal,
 }) => {
   const { website, scores, summary, extractedData, scoreBreakdown } = auditResult;
-  const overallBadge = getScoreBadge(scores.overall, scores.grade);
+  const overallBadge = getScoreBadge(scores.overall);
+  const safeGrade = scores.grade || 'F';
   const [copied, setCopied] = React.useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   const handleQuickCopy = () => {
     const text = `AI Website Audit for ${website.domain}
-Overall Score: ${scores.overall}/100 (Grade ${scores.grade})
+Overall Score: ${scores.overall}/100 (Grade ${safeGrade})
 • UX/UI: ${scores.ux}/100
 • SEO: ${scores.seo}/100
 • Performance: ${scores.performance}/100
@@ -224,7 +220,7 @@ Summary: ${summary}`;
               />
             </div>
             <span className={`px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full ${overallBadge.badgeClass}`}>
-              Grade {scores.grade}
+              Grade {safeGrade}
             </span>
           </div>
 
@@ -257,7 +253,6 @@ Summary: ${summary}`;
       {/* 5 Category Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {categories.map((cat) => {
-          const Icon = cat.icon;
           const badge = getScoreBadge(cat.score);
           const isSelected = selectedCategory === cat.key;
           const bd = getBreakdownForCategory(cat.key);

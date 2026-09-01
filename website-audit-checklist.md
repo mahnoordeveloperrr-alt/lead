@@ -89,7 +89,7 @@ The AI must NEVER invent technical evidence — only interpret what was crawled.
 
 ### Server Response Time (TTFB)
 - Measured Time to First Byte (TTFB) — server response latency.
-- Target: under 300ms. Warning: 300-800ms. Critical: over 800ms.
+- Excellent: under 200ms. Good: 200-500ms. Moderate/Needs Improvement: 500-800ms. Poor: over 800ms.
 
 ### HTML Document Size
 - Total HTML payload size in KB.

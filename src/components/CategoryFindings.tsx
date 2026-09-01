@@ -54,10 +54,10 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
     description: string;
     evidence?: string;
     recommendation?: string;
-    source: 'crawled' | 'ai-analysis' | 'unverified';
+    source: 'crawled' | 'ai-analysis' | 'inferred' | 'unverified';
   }> = [];
 
-  // Deterministic checks
+  // Deterministic checks (always have correct status from crawler)
   deterministicChecks.forEach((dc) => {
     allItems.push({
       id: `det-${dc.id}`,
@@ -70,20 +70,24 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
     });
   });
 
-  // AI findings
+  // AI findings (only add those that don't duplicate deterministic checks)
+  const detTitles = new Set(deterministicChecks.map((c) => c.title.toLowerCase().trim()));
   (Object.keys(categoryFindings) as FindingCategory[]).forEach((cat) => {
     const list = categoryFindings[cat] || [];
     list.forEach((f) => {
-      allItems.push({
-        id: f.id,
-        category: cat,
-        title: f.title,
-        status: f.status,
-        description: f.description,
-        evidence: f.evidence,
-        recommendation: f.recommendation,
-        source: f.source || 'ai-analysis',
-      });
+      const titleLower = (f.title || '').toLowerCase().trim();
+      if (!detTitles.has(titleLower)) {
+        allItems.push({
+          id: f.id,
+          category: cat,
+          title: f.title,
+          status: f.status,
+          description: f.description,
+          evidence: f.evidence,
+          recommendation: f.recommendation,
+          source: f.source || 'ai-analysis',
+        });
+      }
     });
   });
 

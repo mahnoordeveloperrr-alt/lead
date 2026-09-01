@@ -102371,16 +102371,11 @@ var CATEGORY_WEIGHTS = {
   conversion: 0.18
 };
 function gradeFromScore(score) {
-  if (score >= 97) return "A+";
-  if (score >= 93) return "A";
-  if (score >= 90) return "A-";
-  if (score >= 87) return "B+";
-  if (score >= 83) return "B";
-  if (score >= 80) return "B-";
-  if (score >= 77) return "C+";
-  if (score >= 73) return "C";
-  if (score >= 70) return "C-";
-  if (score >= 60) return "D";
+  const safe = typeof score === "number" && !isNaN(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
+  if (safe >= 90) return "A";
+  if (safe >= 80) return "B";
+  if (safe >= 70) return "C";
+  if (safe >= 60) return "D";
   return "F";
 }
 function runDeterministicChecks(data2) {
@@ -102659,14 +102654,26 @@ function runDeterministicChecks(data2) {
       weight: 5
     });
   }
-  if (data2.responseTimeMs < 300) {
+  if (data2.responseTimeMs < 200) {
     checks.push({
       id: "ttfb",
       category: "performance",
       title: "Server Latency (TTFB)",
       status: "pass",
-      message: `Fast server response in ${data2.responseTimeMs}ms.`,
-      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 300ms)`,
+      message: `Excellent server response at ${data2.responseTimeMs}ms.`,
+      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 200ms)`,
+      source: "crawled",
+      importance: "recommended",
+      weight: 8
+    });
+  } else if (data2.responseTimeMs < 500) {
+    checks.push({
+      id: "ttfb",
+      category: "performance",
+      title: "Server Latency (TTFB)",
+      status: "pass",
+      message: `Good server response at ${data2.responseTimeMs}ms.`,
+      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 200ms, acceptable under 500ms)`,
       source: "crawled",
       importance: "recommended",
       weight: 8
@@ -102678,7 +102685,7 @@ function runDeterministicChecks(data2) {
       title: "Server Latency (TTFB)",
       status: "warning",
       message: `Moderate server latency at ${data2.responseTimeMs}ms. Could benefit from edge caching or CDN.`,
-      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 300ms)`,
+      evidence: `TTFB: ${data2.responseTimeMs}ms (target: under 200ms)`,
       source: "crawled",
       importance: "recommended",
       weight: 8
@@ -102848,7 +102855,7 @@ function calculateScores(checks, data2) {
         failedChecks++;
       }
     }
-    const score = maxPossible > 0 ? Math.round(Math.min(100, Math.max(10, rawScore / maxPossible * 100))) : 75;
+    const score = maxPossible > 0 ? Math.round(Math.min(100, Math.max(0, rawScore / maxPossible * 100))) : 50;
     breakdown.push({
       category: cat,
       rawScore,
@@ -102867,20 +102874,20 @@ function calculateScores(checks, data2) {
     totalWeight += w;
   }
   const overall = totalWeight > 0 ? Math.round(Math.min(100, Math.max(10, overallWeighted / totalWeight))) : 75;
-  const scores = {
-    ux: breakdown.find((b) => b.category === "ux")?.rawScore !== void 0 ? Math.round(breakdown.find((b) => b.category === "ux").rawScore / Math.max(breakdown.find((b) => b.category === "ux").maxPossible, 1) * 100) || 75 : 75,
-    seo: Math.round(breakdown.find((b) => b.category === "seo").rawScore / Math.max(breakdown.find((b) => b.category === "seo").maxPossible, 1) * 100) || 75,
-    performance: Math.round(breakdown.find((b) => b.category === "performance").rawScore / Math.max(breakdown.find((b) => b.category === "performance").maxPossible, 1) * 100) || 75,
-    accessibility: Math.round(breakdown.find((b) => b.category === "accessibility").rawScore / Math.max(breakdown.find((b) => b.category === "accessibility").maxPossible, 1) * 100) || 75,
-    conversion: Math.round(breakdown.find((b) => b.category === "conversion").rawScore / Math.max(breakdown.find((b) => b.category === "conversion").maxPossible, 1) * 100) || 75,
-    overall,
-    grade: gradeFromScore(overall)
+  const catScore = (cat) => {
+    const b = breakdown.find((x2) => x2.category === cat);
+    if (!b || b.maxPossible <= 0) return 50;
+    return Math.round(b.rawScore / b.maxPossible * 100);
   };
-  scores.ux = Math.min(100, Math.max(10, scores.ux));
-  scores.seo = Math.min(100, Math.max(10, scores.seo));
-  scores.performance = Math.min(100, Math.max(10, scores.performance));
-  scores.accessibility = Math.min(100, Math.max(10, scores.accessibility));
-  scores.conversion = Math.min(100, Math.max(10, scores.conversion));
+  const scores = {
+    ux: Math.min(100, Math.max(0, catScore("ux"))),
+    seo: Math.min(100, Math.max(0, catScore("seo"))),
+    performance: Math.min(100, Math.max(0, catScore("performance"))),
+    accessibility: Math.min(100, Math.max(0, catScore("accessibility"))),
+    conversion: Math.min(100, Math.max(0, catScore("conversion"))),
+    overall: 0,
+    grade: "F"
+  };
   scores.overall = Math.round(
     scores.ux * 0.22 + scores.seo * 0.22 + scores.performance * 0.2 + scores.accessibility * 0.18 + scores.conversion * 0.18
   );
@@ -103135,6 +103142,10 @@ function generateDeterministicFallback(extractedData, deterministicChecks, score
   const strengths = [];
   const passingChecks = deterministicChecks.filter((c) => c.status === "pass");
   for (const c of passingChecks) {
+    const titleLower = c.title.toLowerCase();
+    if ((titleLower.includes("ttfb") || titleLower.includes("server latency")) && extractedData.responseTimeMs >= 300) {
+      continue;
+    }
     strengths.push({
       title: c.title,
       category: c.category,
@@ -103345,6 +103356,14 @@ async function generateAuditWithAi(extractedData, deterministicChecks) {
   }
   const VALID_CATEGORIES = ["ux", "seo", "performance", "accessibility", "conversion"];
   const VALID_STATUSES = ["pass", "warning", "critical", "unverified"];
+  const normalizeStatus = (raw) => {
+    const lower2 = (raw || "").toLowerCase().trim();
+    if (VALID_STATUSES.includes(lower2)) return lower2;
+    return "unverified";
+  };
+  const deterministicTitles = new Set(
+    deterministicChecks.map((c) => c.title.toLowerCase().trim())
+  );
   const highPriorityIssues = (rawJson.highPriorityIssues || []).slice(0, 6).map((issue, idx) => ({
     id: `issue-${idx + 1}`,
     title: issue.title || "Identified Issue",
@@ -103357,32 +103376,48 @@ async function generateAuditWithAi(extractedData, deterministicChecks) {
     source: "ai-analysis"
   }));
   const mapFindings = (items, prefix) => {
-    return (items || []).map((f3, i2) => ({
+    return (items || []).filter((f3) => {
+      const title = (f3.title || "").toLowerCase().trim();
+      return !deterministicTitles.has(title);
+    }).map((f3, i2) => ({
       id: `${prefix}-${i2 + 1}`,
       category: prefix,
       title: f3.title || `${prefix} finding`,
-      status: VALID_STATUSES.includes(f3.status || "") ? f3.status : "unverified",
+      status: normalizeStatus(f3.status),
       description: f3.description || "",
       evidence: f3.evidence || "",
       recommendation: f3.recommendation,
       source: "ai-analysis"
     }));
   };
-  const strengths = (rawJson.strengths || []).map((s2) => ({
-    title: s2.title || "Positive Attribute",
-    category: VALID_CATEGORIES.includes(s2.category || "") ? s2.category : "ux",
-    description: s2.description || "",
-    evidence: s2.evidence || "Observed during automated crawl.",
-    source: "ai-analysis"
-  }));
+  const passingCheckTitles = new Set(
+    deterministicChecks.filter((c) => c.status === "pass").map((c) => c.title.toLowerCase().trim())
+  );
+  const strengths = (rawJson.strengths || []).map((s2) => {
+    const title = s2.title || "Positive Attribute";
+    const isVerified = passingCheckTitles.has(title.toLowerCase().trim());
+    return {
+      title,
+      category: VALID_CATEGORIES.includes(s2.category || "") ? s2.category : "ux",
+      description: s2.description || "",
+      evidence: s2.evidence || "Observed during automated crawl.",
+      source: isVerified ? "crawled" : "ai-analysis"
+    };
+  }).filter((s2) => {
+    const title = s2.title.toLowerCase();
+    if ((title.includes("ttfb") || title.includes("server") || title.includes("latency") || title.includes("response")) && extractedData.responseTimeMs >= 300) {
+      return false;
+    }
+    return true;
+  });
   const redesignOpportunities = (rawJson.redesignOpportunities || []).map((r2) => ({
     area: r2.area || "Website Area",
-    problem: r2.problem || "",
-    evidence: r2.evidence || "",
-    impact: r2.impact || "",
-    redesignStrategy: r2.redesignStrategy || "",
+    problem: r2.problem || "No problem description provided by AI.",
+    evidence: r2.evidence || "Evidence not supplied.",
+    impact: r2.impact || "Impact assessment not available.",
+    redesignStrategy: r2.redesignStrategy || "Consider reviewing this area during a design sprint.",
     priority: ["High", "Medium", "Low"].includes(r2.priority || "") ? r2.priority : "Medium",
-    confidence: "INFERRED"
+    confidence: r2.confidence === "VERIFIED" ? "VERIFIED" : r2.confidence === "UNVERIFIED" ? "UNVERIFIED" : "INFERRED"
   }));
   const limitations = [
     "This audit uses a static HTML crawler \u2014 client-rendered content may not be captured.",
