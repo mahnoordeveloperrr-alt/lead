@@ -36,7 +36,7 @@ export const QuickMetricsBar: React.FC<QuickMetricsBarProps> = ({ data }) => {
             {data.responseTimeMs}ms
           </span>
           <span className="text-[10px] font-mono text-zinc-500 mt-2">
-            {data.responseTimeMs < 500 ? '✓ Fast TTFB' : data.responseTimeMs < 1200 ? '⚠️ Moderate' : '🚨 High Latency'}
+            {data.responseTimeMs < 300 ? '✓ Excellent (<300ms)' : data.responseTimeMs < 800 ? '⚠️ Moderate (300–800ms)' : '🚨 Slow (>800ms)'}
           </span>
         </div>
 

@@ -66,6 +66,11 @@ export function normalizeAndValidateUrl(rawInput: string): { valid: boolean; nor
       }
     }
 
+    // Block IPv6 private/link-local addresses
+    if (hostname.includes(':') || hostname.startsWith('fe80') || hostname.startsWith('fc00') || hostname.startsWith('fd00')) {
+      return { valid: false, error: 'Access to private or link-local IPv6 addresses is prohibited.' };
+    }
+
     return { valid: true, normalizedUrl: parsed.href };
   } catch {
     return { valid: false, error: 'The provided URL format is invalid.' };

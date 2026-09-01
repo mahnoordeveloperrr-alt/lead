@@ -130,12 +130,16 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
     if (source === 'ai-analysis') {
       return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     }
+    if (source === 'inferred') {
+      return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    }
     return 'bg-zinc-900 text-zinc-500 border-zinc-800';
   };
 
   const getSourceLabel = (source: string) => {
     if (source === 'crawled') return '🔍 CRAWLED';
     if (source === 'ai-analysis') return '✨ AI ANALYSIS';
+    if (source === 'inferred') return '💡 INFERRED';
     return '❓ UNVERIFIED';
   };
 

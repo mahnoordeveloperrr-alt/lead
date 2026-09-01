@@ -59,11 +59,24 @@ export const RedesignOpportunities: React.FC<RedesignOpportunitiesProps> = ({
                     {opp.area}
                   </h4>
                 </div>
-                <span
-                  className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border ${priorityColor}`}
-                >
-                  {opp.priority} Priority
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest rounded border ${
+                      opp.confidence === 'VERIFIED'
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        : opp.confidence === 'INFERRED'
+                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                          : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                    }`}
+                  >
+                    {opp.confidence === 'VERIFIED' ? '🔍 VERIFIED' : opp.confidence === 'INFERRED' ? '💡 INFERRED' : '❓ UNVERIFIED'}
+                  </span>
+                  <span
+                    className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border ${priorityColor}`}
+                  >
+                    {opp.priority} Priority
+                  </span>
+                </div>
               </div>
 
               {/* Problem */}

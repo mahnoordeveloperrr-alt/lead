@@ -42,7 +42,7 @@ function loadAuditChecklist(): string {
 // ─── Anti-Hallucination System Prompt ──────────────────────
 
 function buildSystemPrompt(checklist: string): string {
-  return `You are an expert website auditor and web design strategist.
+  return `You are an evidence-grounded website audit analyst and web design strategist.
 
 CRITICAL RULES — READ BEFORE ANALYZING:
 
@@ -51,20 +51,24 @@ CRITICAL RULES — READ BEFORE ANALYZING:
    - You MUST NOT invent, fabricate, or assume any measurements.
    - Never claim something was "tested" or "measured" unless the evidence data explicitly shows it.
 
-2. NEVER invent:
-   - Performance metrics (Lighthouse, Core Web Vitals, LCP, CLS, INP)
-   - Mobile interaction behavior (touch targets, navigation usability, scroll behavior)
-   - Business metrics (conversion rates, bounce rates, visitor counts)
-   - Visual rendering details (contrast ratios, color choices, font sizes)
-   - User behavior patterns (users leave, visitors are confused)
-   - Customer reviews, testimonials, or third-party ratings
-   - Technology stack details not in the evidence
+2. NEVER invent these things:
+   - Performance metrics not supplied (Lighthouse, Core Web Vitals, LCP, CLS, INP)
+   - Mobile interaction behavior (touch targets, navigation usability, scroll behavior, sticky nav)
+   - Business metrics (conversion rates, bounce rates, visitor counts, revenue)
+   - Visual rendering details (contrast ratios, color choices, font sizes, layout pixels)
+   - User behavior patterns (users leave, visitors are confused, high bounce rate)
+   - Customer reviews, testimonials, ratings, or third-party scores
+   - Technology stack details not explicitly in the evidence
    - A/B test results or analytics data
+   - Screen reader behavior or keyboard navigation testing
+   - WCAG compliance status
 
-3. LABEL everything you provide:
-   - If it's based on the crawled data → mark as "AI ANALYSIS — Interpretation"
-   - If you cannot verify it → mark as "UNVERIFIED"
-   - If it contradicts the evidence → DO NOT include it
+3. SOURCE LABELS — Every finding MUST be labeled:
+   - "crawled" if it references a specific number/count/measurement from the supplied data
+   - "ai-analysis" if it is your interpretation or recommendation based on the data
+   - "inferred" if it is a reasonable conclusion that goes beyond direct measurement
+   - "unverified" if you cannot determine the answer from available data
+   - NEVER present ai-analysis or inferred findings as crawled/verified facts
 
 4. DO NOT PROVIDE SCORES.
    - Scores are calculated programmatically from verified checks.
@@ -73,17 +77,26 @@ CRITICAL RULES — READ BEFORE ANALYZING:
 5. For each finding, you MUST:
    - Reference specific evidence from the extracted data
    - Use exact numbers, counts, or measurements from the evidence
-   - Clearly separate what was measured vs what you recommend
+   - Clearly separate what was measured (VERIFIED) vs what you recommend
+   - If a deterministic finding already exists for the same issue, INTERPRET it — do NOT create a duplicate
 
 6. For the Transformation Blueprint:
    - Each recommendation must have: Problem, Evidence, Impact, Redesign Strategy, Priority
+   - Set confidence: "VERIFIED" if directly backed by crawl data, "INFERRED" if reasonable interpretation
    - Never invent business metrics or guaranteed improvements
    - Use language like "potential improvement" not "will increase by X%"
+   - Never recommend fake testimonials, fake logos, fake reviews, or fabricated social proof
 
-7. Be honest about limitations:
-   - If something cannot be verified, say so
+7. STRENGTHS must be evidence-backed:
+   - Only list genuinely verified positives (HTTPS, viewport, H1, canonical, etc.)
+   - Do not use exaggerated language ("beautiful design", "excellent UX")
+   - Use neutral, factual wording
+
+8. Be honest about limitations:
+   - If something cannot be verified, label it UNVERIFIED
    - If a check is ambiguous, label it UNVERIFIED
    - Quality over completeness
+   - Separate PASS from OPTIMIZATION OPPORTUNITY (a check can pass while still having AI recommendations)
 
 Evaluation Checklist:
 ${checklist}`;
@@ -212,6 +225,7 @@ function getResponseSchema() {
             impact: { type: Type.STRING },
             redesignStrategy: { type: Type.STRING },
             priority: { type: Type.STRING, description: 'High | Medium | Low' },
+            confidence: { type: Type.STRING, description: 'VERIFIED | INFERRED | UNVERIFIED' },
           },
           required: ['area', 'problem', 'evidence', 'impact', 'redesignStrategy', 'priority'],
         },
@@ -307,6 +321,7 @@ function generateDeterministicFallback(
       impact: 'A weak or missing hero headline reduces immediate clarity of purpose.',
       redesignStrategy: 'Create a bold, benefit-driven H1 with supporting subtitle and primary CTA button above the fold.',
       priority: 'High',
+      confidence: 'VERIFIED' as const,
     },
     {
       area: 'Mobile Experience',
@@ -315,6 +330,7 @@ function generateDeterministicFallback(
       impact: 'Mobile visitors may experience layout issues or slow loading.',
       redesignStrategy: 'Test responsive behavior across breakpoints, optimize touch targets to 48px+, and streamline mobile navigation.',
       priority: 'High',
+      confidence: 'INFERRED' as const,
     },
     {
       area: 'Conversion Path Optimization',
@@ -323,6 +339,7 @@ function generateDeterministicFallback(
       impact: 'Unclear or absent primary conversion actions reduce lead capture potential.',
       redesignStrategy: 'Establish a single dominant primary CTA, repeat it at strategic scroll points, and simplify form fields to essentials.',
       priority: 'Medium',
+      confidence: 'INFERRED' as const,
     },
   ];
 
@@ -581,8 +598,8 @@ export async function generateAuditWithAi(
     title: s.title || 'Positive Attribute',
     category: VALID_CATEGORIES.includes(s.category || '') ? (s.category as any) : 'ux',
     description: s.description || '',
-    evidence: s.evidence || 'Verified through automated extraction.',
-    source: 'crawled',
+    evidence: s.evidence || 'Observed during automated crawl.',
+    source: 'ai-analysis' as const,
   }));
 
   const redesignOpportunities: RedesignOpportunity[] = (rawJson.redesignOpportunities || []).map((r) => ({
@@ -592,6 +609,7 @@ export async function generateAuditWithAi(
     impact: r.impact || '',
     redesignStrategy: r.redesignStrategy || '',
     priority: (['High', 'Medium', 'Low'].includes(r.priority || '') ? r.priority : 'Medium') as any,
+    confidence: 'INFERRED' as const,
   }));
 
   const limitations = [

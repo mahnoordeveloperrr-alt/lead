@@ -1,7 +1,7 @@
 export type IssueSeverity = 'high' | 'medium' | 'low';
 export type FindingCategory = 'ux' | 'seo' | 'performance' | 'accessibility' | 'conversion';
 export type FindingStatus = 'pass' | 'warning' | 'critical' | 'unverified';
-export type FindingSource = 'crawled' | 'ai-analysis' | 'unverified';
+export type FindingSource = 'crawled' | 'ai-analysis' | 'inferred' | 'unverified';
 export type ScoreGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'C-' | 'D' | 'F';
 
 export interface HeadingItem {
@@ -194,6 +194,7 @@ export interface RedesignOpportunity {
   impact: string;
   redesignStrategy: string;
   priority: 'High' | 'Medium' | 'Low';
+  confidence: 'VERIFIED' | 'INFERRED' | 'UNVERIFIED';
 }
 
 export interface AuditResult {

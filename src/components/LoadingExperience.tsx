@@ -144,7 +144,7 @@ export const LoadingExperience: React.FC<LoadingExperienceProps> = ({ targetUrl 
 
         {/* Reassurance Footer */}
         <div className="pt-4 border-t border-zinc-800/60 text-center text-xs text-zinc-500 font-mono">
-          Crawling live markup & streaming through Gemini 3.7. Takes 5–10s.
+          Crawling live markup and running AI analysis. Typically completes in 5–15s.
         </div>
       </div>
     </div>

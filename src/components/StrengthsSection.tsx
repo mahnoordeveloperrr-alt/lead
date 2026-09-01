@@ -40,10 +40,12 @@ export const StrengthsSection: React.FC<StrengthsSectionProps> = ({ strengths })
                   className={`text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded border ${
                     item.source === 'crawled'
                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                      : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                      : item.source === 'inferred'
+                        ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                        : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                   }`}
                 >
-                  {item.source === 'crawled' ? '🔍 CRAWLED' : '✨ AI'}
+                  {item.source === 'crawled' ? '🔍 CRAWLED' : item.source === 'inferred' ? '💡 INFERRED' : '✨ AI'}
                 </span>
                 <CheckCircle className="w-4 h-4 text-emerald-400" />
               </div>

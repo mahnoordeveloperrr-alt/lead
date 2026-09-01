@@ -436,7 +436,19 @@ export function runDeterministicChecks(data: ExtractedWebsiteData): Deterministi
 
   // 19. HTML Size
   const htmlSizeKB = Math.round(data.htmlSizeBytes / 1024);
-  if (htmlSizeKB > 500) {
+  if (htmlSizeKB > 1000) {
+    checks.push({
+      id: 'html-size',
+      category: 'performance',
+      title: 'HTML Document Size',
+      status: 'critical',
+      message: `HTML payload is ${htmlSizeKB} KB. Extremely large HTML document increases parse time and memory usage.`,
+      evidence: `HTML size: ${htmlSizeKB} KB (${data.htmlSizeBytes} bytes)`,
+      source: 'crawled',
+      importance: 'recommended',
+      weight: 6,
+    });
+  } else if (htmlSizeKB > 500) {
     checks.push({
       id: 'html-size',
       category: 'performance',
@@ -447,18 +459,6 @@ export function runDeterministicChecks(data: ExtractedWebsiteData): Deterministi
       source: 'crawled',
       importance: 'recommended',
       weight: 4,
-    });
-  } else if (htmlSizeKB > 1000) {
-    checks.push({
-      id: 'html-size',
-      category: 'performance',
-      title: 'HTML Document Size',
-      status: 'critical',
-      message: `HTML payload is ${htmlSizeKB} KB. Extremely large HTML document.`,
-      evidence: `HTML size: ${htmlSizeKB} KB (${data.htmlSizeBytes} bytes)`,
-      source: 'crawled',
-      importance: 'recommended',
-      weight: 6,
     });
   } else {
     checks.push({

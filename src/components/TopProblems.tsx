@@ -70,10 +70,12 @@ export const TopProblems: React.FC<TopProblemsProps> = ({ issues }) => {
                     className={`text-[9px] font-mono uppercase tracking-widest px-2 py-0.5 rounded border ${
                       issue.source === 'crawled'
                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                        : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                        : issue.source === 'inferred'
+                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                     }`}
                   >
-                    {issue.source === 'crawled' ? '🔍 CRAWLED' : '✨ AI ANALYSIS'}
+                    {issue.source === 'crawled' ? '🔍 CRAWLED' : issue.source === 'inferred' ? '💡 INFERRED' : '✨ AI ANALYSIS'}
                   </span>
                   <span className="text-[10px] font-mono text-zinc-600">#{idx + 1}</span>
                 </div>
