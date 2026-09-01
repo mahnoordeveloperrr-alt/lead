@@ -71,23 +71,29 @@ export const CategoryFindings: React.FC<CategoryFindingsProps> = ({
   });
 
   // AI findings (only add those that don't duplicate deterministic checks)
-  const detTitles = new Set(deterministicChecks.map((c) => c.title.toLowerCase().trim()));
+  // Use both exact and fuzzy matching to prevent near-duplicate entries
+  const detTitles = new Set<string>(deterministicChecks.map((c) => c.title.toLowerCase().trim()));
+  const detKeywords = new Set<string>(deterministicChecks.map((c) => c.title.toLowerCase().trim().split('—')[0].trim()));
   (Object.keys(categoryFindings) as FindingCategory[]).forEach((cat) => {
     const list = categoryFindings[cat] || [];
     list.forEach((f) => {
       const titleLower = (f.title || '').toLowerCase().trim();
-      if (!detTitles.has(titleLower)) {
-        allItems.push({
-          id: f.id,
-          category: cat,
-          title: f.title,
-          status: f.status,
-          description: f.description,
-          evidence: f.evidence,
-          recommendation: f.recommendation,
-          source: f.source || 'ai-analysis',
-        });
+      // Skip if exact match
+      if (detTitles.has(titleLower)) return;
+      // Skip if AI title starts with same keyword as a deterministic check
+      for (const kw of detKeywords) {
+        if (titleLower.startsWith(kw) || kw.startsWith(titleLower)) return;
       }
+      allItems.push({
+        id: f.id,
+        category: cat,
+        title: f.title,
+        status: f.status,
+        description: f.description,
+        evidence: f.evidence,
+        recommendation: f.recommendation,
+        source: f.source || 'ai-analysis',
+      });
     });
   });
 

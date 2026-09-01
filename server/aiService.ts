@@ -80,13 +80,19 @@ CRITICAL RULES — READ BEFORE ANALYZING:
    - Use exact numbers, counts, or measurements from the evidence
    - Clearly separate what was measured (VERIFIED) vs what you recommend
    - If a deterministic finding already exists for the same issue, INTERPRET it — do NOT create a duplicate
+   - NEVER claim an H1 is "missing" or "weak" when the data shows one exists
+   - NEVER repeat the problem statement inside the recommendation
+   - Every recommendation must explain what to DO, not restate what is wrong
 
 6. For the Transformation Blueprint:
    - Each recommendation must have: Problem, Evidence, Impact, Redesign Strategy, Priority
    - Set confidence: "VERIFIED" if directly backed by crawl data, "INFERRED" if reasonable interpretation
-   - Never invent business metrics or guaranteed improvements
+   - If an H1 exists, do NOT call it "missing" or "weak" — frame as a UX refinement opportunity
+   - Never invent business metrics, guaranteed improvements, or specific percentage claims
    - Use language like "potential improvement" not "will increase by X%"
    - Never recommend fake testimonials, fake logos, fake reviews, or fabricated social proof
+   - Never make visual claims ("hero is visually weak", "CTA is below the fold") unless the crawler actually measured visual rendering
+   - Recommendations should answer: What should the website owner actually do next?
 
 7. STRENGTHS must be evidence-backed:
    - Only list genuinely verified positives (HTTPS, viewport, H1, canonical, etc.)
@@ -237,6 +243,38 @@ function getResponseSchema() {
   };
 }
 
+// ─── Actionable Recommendations by Check ID ──────────────
+
+function getActionableRecommendation(check: DeterministicCheck): string {
+  const recommendations: Record<string, string> = {
+    'ssl-https': 'Migrate to HTTPS with an automatic TLS certificate and configure server-side redirects from HTTP to HTTPS.',
+    'title-presence': 'Add a descriptive <title> tag of 30-60 characters that clearly communicates the page topic and brand.',
+    'title-length': 'Consider tightening the title by a few characters while preserving the primary brand and search intent. Prioritize clarity over hitting an arbitrary character limit.',
+    'meta-desc-presence': 'Write a compelling 120-160 character meta description that accurately summarizes the page value proposition and encourages click-through.',
+    'meta-desc-length': 'Adjust the meta description to 120-160 characters. Descriptions that are too short miss optimization opportunities; descriptions that are too long may be truncated in search results.',
+    'h1-presence': 'Add exactly one clear, descriptive H1 heading that communicates the primary topic of the page.',
+    'h1-multiple': 'Consolidate multiple H1 headings into a single primary H1. Promote secondary H1s to H2 or H3 as appropriate.',
+    'heading-hierarchy': 'Restructure headings to follow a sequential H1 > H2 > H3 hierarchy without skipping levels.',
+    'canonical-url': 'Add a <link rel="canonical"> tag pointing to the preferred version of this page to prevent duplicate indexing.',
+    'og-metadata': 'Add the missing Open Graph tags (og:title, og:description, og:image) to enable rich social media previews.',
+    'robots-meta': 'Review the robots meta directive. A noindex directive prevents search engines from indexing this page.',
+    'image-alt-text': 'Add meaningful alt text to informative images. Mark purely decorative images with alt="" so screen readers can skip them.',
+    'viewport-meta': 'Add a <meta name="viewport" content="width=device-width, initial-scale=1"> tag for responsive mobile rendering.',
+    'semantic-landmarks': 'Add HTML5 semantic elements (<header>, <nav>, <main>, <footer>) to improve document structure and accessibility.',
+    'empty-links': 'Give every interactive link an accessible name. Prefer visible text; for icon-only links, add an appropriate aria-label.',
+    'empty-buttons': 'Add accessible names to buttons via visible text, aria-label, or title attribute.',
+    'form-labels': 'Associate every form input with a visible <label> element or aria-label. Do not rely on placeholder text as the primary label.',
+    'ttfb': 'Investigate backend response time, caching, CDN configuration, and server-side processing. Re-test TTFB from multiple locations after optimization.',
+    'html-size': 'Review HTML for unnecessary inline scripts, large data attributes, or server-rendered content that could be deferred or loaded dynamically.',
+    'script-count': 'Audit external scripts for necessity. Remove unused scripts, defer non-critical ones, and consolidate where possible.',
+    'stylesheet-count': 'Consolidate external stylesheets and remove unused CSS to reduce HTTP requests.',
+    'cta-presence': 'Define one primary conversion action and ensure it is clearly visible. Repeat it at strategic scroll points throughout the page.',
+    'form-presence': 'Add a contact or lead-capture form so visitors have a direct way to submit inquiries.',
+    'page-language': 'Add a lang attribute to the <html> element (e.g., lang="en") so screen readers can determine correct pronunciation.',
+  };
+  return recommendations[check.id] || `Review this ${check.category} check and address the identified issue.`;
+}
+
 // ─── Deterministic Fallback ────────────────────────────────
 
 function generateDeterministicFallback(
@@ -269,26 +307,17 @@ function generateDeterministicFallback(
             : c.category === 'performance'
               ? 'Increases page load time and user frustration.'
               : 'May reduce visitor engagement and conversion.',
-      recommendation:
-        c.id === 'ssl-https'
-          ? 'Migrate to HTTPS with automatic TLS certificate and server-side redirect.'
-          : c.id === 'title-presence'
-            ? 'Add a descriptive <title> tag of 30-60 characters.'
-            : c.id === 'meta-desc-presence'
-              ? 'Write a compelling 120-160 character meta description.'
-              : c.id === 'h1-presence'
-                ? 'Add exactly one clear H1 heading as the primary page topic.'
-                : `Address: ${c.message}`,
+      recommendation: getActionableRecommendation(c),
       source: 'crawled',
     });
   }
 
-  // Build category findings from deterministic checks
+  // Build category findings from deterministic checks — use stable check IDs
   const buildCategoryFindings = (cat: string): CategoryFinding[] => {
     return deterministicChecks
       .filter((c) => c.category === cat)
-      .map((c, i) => ({
-        id: `${cat}-${i + 1}`,
+      .map((c) => ({
+        id: c.id,
         category: c.category as any,
         title: c.title,
         status: c.status as any,
@@ -316,38 +345,71 @@ function generateDeterministicFallback(
     });
   }
 
-  // Redesign opportunities based on findings
-  const redesignOpportunities: RedesignOpportunity[] = [
-    {
+  // Redesign opportunities based on findings — always evidence-conditional
+  const redesignOpportunities: RedesignOpportunity[] = [];
+
+  // Hero & Value Proposition — only if H1 is missing or if we can suggest improvement
+  if (extractedData.headings.h1Count === 0) {
+    redesignOpportunities.push({
       area: 'Hero Section & Value Proposition',
-      problem: extractedData.headings.h1[0]
-        ? `Current H1: "${extractedData.headings.h1[0].slice(0, 60)}"`
-        : 'No H1 heading to anchor the value proposition.',
-      evidence: `${extractedData.headings.h1Count} H1 tag(s) detected. Body word count: ${extractedData.performanceSignals.approxWordCount}.`,
-      impact: 'A weak or missing hero headline reduces immediate clarity of purpose.',
-      redesignStrategy: 'Create a bold, benefit-driven H1 with supporting subtitle and primary CTA button above the fold.',
+      problem: 'No primary H1 heading was detected in the page structure.',
+      evidence: '0 H1 tags found in the page HTML.',
+      impact: 'The page lacks a clear primary heading, making it harder for visitors and search engines to identify the main topic.',
+      redesignStrategy: 'Create one clear, descriptive H1 heading that communicates the primary value proposition. Add supporting copy and a prioritized CTA below it.',
       priority: 'High',
-      confidence: 'VERIFIED' as const,
-    },
-    {
-      area: 'Mobile Experience',
-      problem: extractedData.hasViewportMeta ? 'Viewport is configured but mobile rendering was not tested.' : 'Viewport meta tag is missing.',
-      evidence: `Viewport: "${extractedData.viewport || 'not set'}" | Scripts: ${extractedData.performanceSignals.scriptsCount} | HTML: ${Math.round(extractedData.htmlSizeBytes / 1024)} KB.`,
-      impact: 'Mobile visitors may experience layout issues or slow loading.',
-      redesignStrategy: 'Test responsive behavior across breakpoints, optimize touch targets to 48px+, and streamline mobile navigation.',
-      priority: 'High',
-      confidence: 'INFERRED' as const,
-    },
-    {
-      area: 'Conversion Path Optimization',
-      problem: `${extractedData.links.ctaLinks.length} CTA-like links detected. ${extractedData.forms.count} form(s) on page.`,
-      evidence: `CTAs: ${extractedData.links.ctaLinks.slice(0, 3).join(', ') || 'none detected'} | Forms: ${extractedData.forms.count}.`,
-      impact: 'Unclear or absent primary conversion actions reduce lead capture potential.',
-      redesignStrategy: 'Establish a single dominant primary CTA, repeat it at strategic scroll points, and simplify form fields to essentials.',
+      confidence: 'VERIFIED',
+    });
+  } else if (extractedData.headings.h1Count > 1) {
+    redesignOpportunities.push({
+      area: 'Hero Section & Value Proposition',
+      problem: `Multiple H1 headings detected (${extractedData.headings.h1Count}). Best practice is exactly one H1 per page.`,
+      evidence: `H1 headings: ${extractedData.headings.h1.map(h => `"${h.slice(0, 50)}"`).join(', ')}.`,
+      impact: 'Multiple H1s can dilute the page topic signal for search engines and create confusion in the document outline.',
+      redesignStrategy: 'Consolidate into a single primary H1. Promote secondary H1s to H2 or H3 as appropriate.',
       priority: 'Medium',
-      confidence: 'INFERRED' as const,
-    },
-  ];
+      confidence: 'VERIFIED',
+    });
+  } else if (extractedData.headings.h1[0]) {
+    // H1 exists — frame as UX refinement opportunity, NOT a failure
+    const h1Text = extractedData.headings.h1[0];
+    redesignOpportunities.push({
+      area: 'Hero Section & Value Proposition',
+      problem: `The primary headline is present and informative but could potentially be refined for greater conciseness and immediate impact.`,
+      evidence: `1 H1 detected: "${h1Text.slice(0, 80)}${h1Text.length > 80 ? '...' : ''}" (${h1Text.length} characters).`,
+      impact: 'A more concise, benefit-focused hero hierarchy could help visitors understand the primary value proposition faster.',
+      redesignStrategy: 'Review the hero hierarchy: consider a concise primary headline, supporting one-line value proposition, clear primary CTA, and optional secondary action. Surface trust signals where actually available.',
+      priority: 'Medium',
+      confidence: 'INFERRED',
+    });
+  }
+
+  // Mobile Experience — always INFERRED since static crawl
+  redesignOpportunities.push({
+    area: 'Mobile Experience Review',
+    problem: extractedData.hasViewportMeta
+      ? 'Responsive viewport is configured, but interactive mobile behavior was not tested by the static crawler.'
+      : 'Viewport meta tag is missing — the site will render as desktop scale on all mobile devices.',
+    evidence: `Viewport: "${extractedData.viewport || 'not set'}" | Scripts: ${extractedData.performanceSignals.scriptsCount} | HTML: ${Math.round(extractedData.htmlSizeBytes / 1024)} KB.`,
+    impact: 'Mobile visitors may experience layout issues, difficult navigation, or slow loading that the static crawl cannot detect.',
+    redesignStrategy: 'Test the page across representative mobile breakpoints. Review navigation simplification, touch target sizing, content hierarchy, and CTA placement based on actual rendered behavior.',
+    priority: extractedData.hasViewportMeta ? 'Medium' : 'High',
+    confidence: 'UNVERIFIED',
+  });
+
+  // Conversion Path — based on detected CTA signals
+  const ctaCount = extractedData.links.ctaLinks.length;
+  const formCount = extractedData.forms.count;
+  redesignOpportunities.push({
+    area: 'Conversion Path Optimization',
+    problem: ctaCount > 0
+      ? `${ctaCount} CTA-like link(s) and ${formCount} form(s) detected. Review whether the primary conversion action is clearly prioritized.`
+      : 'No explicit CTA-like links detected in the static HTML. The primary conversion action may not be immediately obvious to visitors.',
+    evidence: `CTAs: ${extractedData.links.ctaLinks.slice(0, 3).join(', ') || 'none detected'} | Forms: ${formCount}.`,
+    impact: 'Unclear or absent primary conversion actions may reduce the likelihood of visitors taking the desired next step.',
+    redesignStrategy: 'Define one dominant primary conversion action, strengthen its visual and content hierarchy, repeat it at relevant scroll points, and review form friction against the site actual business goal.',
+    priority: ctaCount === 0 ? 'High' : 'Medium',
+    confidence: 'INFERRED',
+  });
 
   const limitations: string[] = [
     'This audit used a static HTML crawler to evaluate initial server-rendered markup.',
@@ -583,8 +645,12 @@ export async function generateAuditWithAi(
   };
 
   // Build a set of deterministic check titles to prevent AI duplicates
+  // Use BOTH exact and partial matching to catch all duplicates
   const deterministicTitles = new Set(
     deterministicChecks.map((c) => c.title.toLowerCase().trim())
+  );
+  const deterministicTitleKeywords = new Set(
+    deterministicChecks.map((c) => c.title.toLowerCase().trim().split('—')[0].trim())
   );
 
   const highPriorityIssues: HighPriorityIssue[] = (rawJson.highPriorityIssues || []).slice(0, 6).map((issue, idx) => ({
@@ -603,7 +669,13 @@ export async function generateAuditWithAi(
     return (items || []).filter((f) => {
       // Skip AI findings that duplicate an existing deterministic check
       const title = (f.title || '').toLowerCase().trim();
-      return !deterministicTitles.has(title);
+      if (deterministicTitles.has(title)) return false;
+      // Also skip if the AI title starts with the same keyword as a deterministic check
+      // e.g., AI returns "Image Alt Text" when deterministic has "Image Alt Text Coverage"
+      for (const keyword of deterministicTitleKeywords) {
+        if (title.startsWith(keyword) || keyword.startsWith(title)) return false;
+      }
+      return true;
     }).map((f, i) => ({
       id: `${prefix}-${i + 1}`,
       category: prefix as any,
